@@ -1,0 +1,6 @@
+composer.phar
+/vendor/
+/node_modules/
+/data/
+/testdata/
+.DS_Store
