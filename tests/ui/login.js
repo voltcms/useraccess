@@ -47,7 +47,6 @@ $(function () {
             EXCEPTION_DUPLICATE_EMAIL: 'E-Mail address already existing',
             EXCEPTION_ENTRY_ALREADY_EXIST: 'Entry already existing',
             EXCEPTION_ENTRY_NOT_EXIST: 'Entry not existing',
-            EXCEPTION_ENTRY_READONLY: 'Entry readonly',
             EXCEPTION_PROVIDER_NOT_EXIST: 'Provider not existing',
             EXCEPTION_AUTHENTICATION_FAILED: 'Authentication failed'
         },
@@ -89,7 +88,6 @@ $(function () {
             EXCEPTION_DUPLICATE_EMAIL: 'E-Mail Adresse existiert bereits',
             EXCEPTION_ENTRY_ALREADY_EXIST: 'Eintrag existiert bereits',
             EXCEPTION_ENTRY_NOT_EXIST: 'Eintrag existiert nicht',
-            EXCEPTION_ENTRY_READONLY: 'Eintrag schreibgeschützt',
             EXCEPTION_PROVIDER_NOT_EXIST: 'Provider existiert nicht',
             EXCEPTION_AUTHENTICATION_FAILED: 'Anmeldung fehlgeschlagen'
         }

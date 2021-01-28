@@ -6,10 +6,6 @@ class StaticUserProvider implements UserProviderInterface {
 
     private $entries = [];
 
-    public function isReadOnly(): bool {
-        return true;
-    }
-
     public function isIdExisting(string $id): bool {
         $id = trim(strtolower($id));
         if (isset($this->entries[$id])) {
@@ -37,7 +33,6 @@ class StaticUserProvider implements UserProviderInterface {
             throw new \Exception('EXCEPTION_USER_ALREADY_EXIST');
         } else {
             $user->id = $user->userName;
-            $user->readOnly = $this->isReadOnly();
             $this->entries[$user->id] = $user;
             return $user;
         }
@@ -69,15 +64,26 @@ class StaticUserProvider implements UserProviderInterface {
     }
 
     public function updateUser(User $user): User {
-        throw new \Exception('EXCEPTION_ENTRY_READONLY');
+        if ($this->isIdExisting($user->userName)) {
+            $user->id = $user->userName;
+            $this->entries[$user->id] = $user;
+            return $user;
+        } else {
+            throw new \Exception('EXCEPTION_USER_NOT_EXIST');
+        }
     }
 
     public function deleteUser(string $id) {
-        throw new \Exception('EXCEPTION_ENTRY_READONLY');
+        $id = trim(strtolower($id));
+        if ($this->isIdExisting($id)) {
+            unset($this->entries[$id]);
+        } else {
+            throw new \Exception('EXCEPTION_USER_NOT_EXIST');
+        }
     }
 
     public function deleteUsers() {
-        throw new \Exception('EXCEPTION_ENTRY_READONLY');
+        $this->entries = [];
     }
 
     //////////////////////////////////////////////////

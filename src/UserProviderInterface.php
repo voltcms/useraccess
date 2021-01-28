@@ -4,8 +4,6 @@ namespace PragmaPHP\UserAccess;
 
 interface UserProviderInterface {
 
-    public function isReadOnly(): bool;
-
     public function isIdExisting(string $id): bool;
 
     public function isUserNameExisting(string $userName): bool;

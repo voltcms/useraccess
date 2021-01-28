@@ -41,8 +41,6 @@ class UserProviderTest extends TestCase {
         $user_test2 = $provider->getUser($user2->id);
         $this->assertNotEmpty($user_test1);
         $this->assertNotEmpty($user_test2);
-        $this->assertEquals($provider->isReadOnly(), $user_test1->readOnly);
-        $this->assertEquals($provider->isReadOnly(), $user_test2->readOnly);
 
         $this->assertEquals('userid1', $user_test1->userName);
         $this->assertEquals('userid1.test@test.com', $user_test1->email);
@@ -79,36 +77,30 @@ class UserProviderTest extends TestCase {
         $user_test1->passwordHash = User::hashPassword('password1_update');
         $user_test1->email = 'userid1.test_update@test.com';
         $user_test1->groups = ['Administrators'];
-        if (!$provider->isReadOnly()) {
-            $provider->updateUser($user_test1);
-            $user_test1 = $provider->getUser($user1->id);
-            $this->assertEquals('userid1', $user_test1->userName);
-            $this->assertEquals('userid1.test_update@test.com', $user_test1->email);
-            $this->assertFalse($user_test1->verifyPassword('password1'));
-            $this->assertTrue($user_test1->verifyPassword('password1_update'));
-            $this->assertTrue($user_test1->groups == ['Administrators']);
-        }
+        $provider->updateUser($user_test1);
+        $user_test1 = $provider->getUser($user1->id);
+        $this->assertEquals('userid1', $user_test1->userName);
+        $this->assertEquals('userid1.test_update@test.com', $user_test1->email);
+        $this->assertFalse($user_test1->verifyPassword('password1'));
+        $this->assertTrue($user_test1->verifyPassword('password1_update'));
+        $this->assertTrue($user_test1->groups == ['Administrators']);
 
         // delete attribute test
         $user_test1->displayName = '';
-        if (!$provider->isReadOnly()) {
-            $provider->updateUser($user_test1);
-            $user_test1 = $provider->getUser($user_test1->id);
-            $this->assertEquals('', $user_test1->displayName);
-            $user_test1->displayName = 'userid1 test';
-            $provider->updateUser($user_test1);
-            $user_test1 = $provider->getUser($user_test1->id);
-            $this->assertEquals('userid1 test', $user_test1->displayName);
-            $provider->updateUser($user_test1);
-        }
+        $provider->updateUser($user_test1);
+        $user_test1 = $provider->getUser($user_test1->id);
+        $this->assertEquals('', $user_test1->displayName);
+        $user_test1->displayName = 'userid1 test';
+        $provider->updateUser($user_test1);
+        $user_test1 = $provider->getUser($user_test1->id);
+        $this->assertEquals('userid1 test', $user_test1->displayName);
+        $provider->updateUser($user_test1);
 
         $users = $provider->getUsers();
         $this->assertNotEmpty($users);
         $this->assertEquals(3, count($users));
 
-        if (!$provider->isReadOnly()) {
-            $provider->deleteUsers();
-        }
+        $provider->deleteUsers();
 
     }
 

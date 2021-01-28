@@ -12,10 +12,6 @@ class FileUserProvider implements UserProviderInterface {
         $this->db = new FileDB($directory);
     }
 
-    public function isReadOnly(): bool {
-        return false;
-    }
-
     public function isIdExisting(string $id): bool {
         $id = trim($id);
         return !empty($this->db->read($id));
@@ -39,7 +35,6 @@ class FileUserProvider implements UserProviderInterface {
             throw new \Exception('EXCEPTION_USER_ALREADY_EXIST');
         } else {
             $user->id = $user->userName;
-            $user->readOnly = $this->isReadOnly();
             $id = $this->db->create($user->getAttributes(), $user->userName);
             return $user;
         }
