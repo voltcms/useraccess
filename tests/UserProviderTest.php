@@ -11,13 +11,11 @@ class UserProviderTest extends TestCase {
 
     public function test() {
         $this->performTest(new StaticUserProvider());
-
-        $userProvider = new FileUserProvider('testdata/users');
-        $userProvider->deleteUsers();
         $this->performTest(new FileUserProvider('testdata/users'));
     }
 
     public function performTest(UserProviderInterface $provider) {
+        $provider->deleteUsers();
         if ($provider->isUserNameExisting('userid1')) {
             $provider->deleteUser('userid1');
         }
