@@ -36,7 +36,7 @@ class User {
     //     "location":
     //      "https://example.com/v2/Users/2819c223-7f76-453a-919d-413861904646"
     //   }
-    public $readOnly = true;
+    public $readOnly = false;
 
     //////////////////////////////////////////////////
 
