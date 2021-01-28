@@ -13,7 +13,7 @@ class FileUserProvider implements UserProviderInterface {
     }
 
     public function isIdExisting(string $id): bool {
-        $id = trim($id);
+        $id = trim(strtolower($id));
         return !empty($this->db->read($id));
     }
 
@@ -23,7 +23,7 @@ class FileUserProvider implements UserProviderInterface {
 
     public function getUser(string $userName): User {
         $id = trim(strtolower($userName));
-        if ($this->isIdExisting($userName)) {
+        if ($this->isIdExisting($id)) {
             return $this->documentToEntry($this->db->read($id)[0]);
         } else {
             throw new \Exception('EXCEPTION_USER_NOT_EXIST');
