@@ -62,7 +62,6 @@ class User {
         $this->active = $active;
         $this->passwordHash = $passwordHash;
         $this->groups = $groups;
-        $this->readOnly = $readOnly;
     }
 
     public static function hashPassword(string $password) {
