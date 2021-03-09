@@ -20,7 +20,7 @@ class RestAppTest extends TestCase {
     private $roleId = '';
 
     public function setUp(): void {
-        $userProvider = new FileUserProvider('testdata/users');
+        $userProvider = new FileUserProvider('testdata/user');
         $this->app = new RestApp($userProvider);
 
         $_SERVER['SCRIPT_NAME'] = '/index.php';

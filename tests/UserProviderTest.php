@@ -11,7 +11,7 @@ class UserProviderTest extends TestCase {
 
     public function test() {
         $this->performTest(new StaticUserProvider());
-        $this->performTest(new FileUserProvider('testdata/users'));
+        $this->performTest(new FileUserProvider('testdata/user'));
     }
 
     public function performTest(UserProviderInterface $provider) {
