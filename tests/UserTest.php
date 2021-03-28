@@ -7,9 +7,14 @@ use \PragmaPHP\UserAccess\User;
 class UserTest extends TestCase {
 
     public function test() {
-        $user = new User(null, 'userid1', 'user id 1', 'userid1@test.com', true, User::hashPassword('password'), []);
+        $user = new User();
+        $user->setId('userid1');
+        $user->setUserName('userid1');
+        $user->setDisplayName('user id 1');
+        $user->setEmail('userid1@test.com');
+        $user->setPassword('password');
         $this->assertNotEmpty($user);
-        $this->assertEquals('userid1', $user->userName);
+        $this->assertEquals('userid1', $user->getUserName());
         $userAttributes = $user->getAttributes();
         $this->assertEquals('userid1', $userAttributes['userName']);
         $this->assertTrue($user->verifyPassword('password'));

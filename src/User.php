@@ -6,11 +6,16 @@ namespace PragmaPHP\UserAccess;
 
 class User {
 
-    public $schemas = ['urn:ietf:params:scim:schemas:core:2.0:User'];
-    public $id = '';
-    public $userName = '';
-    public $displayName = '';
-    public $email = '';
+    private $schemas = ['urn:ietf:params:scim:schemas:core:2.0:User'];
+    private $id = '';
+    private $userName = '';
+    private $displayName = '';
+    private $email = '';
+    private $active = true;
+    private $passwordHash = '';
+    private $groups = [];
+    private $loginAttempts = 0;
+
     // "emails": [
     //     {
     //       "value": "bjensen@example.com",
@@ -18,16 +23,16 @@ class User {
     //       "primary": true
     //     }
     //   ]
-    public $active = true;
-    public $passwordHash = '';
-    public $groups = [];
+
     // "groups": [
     //     {
     //       "value": "e9e30dba-f08f-4109-8486-d5c6a331660a",
     //       "$ref":
     // "https://example.com/v2/Groups/e9e30dba-f08f-4109-8486-d5c6a331660a",
     //       "display": "Tour Guides"
-    //     },
+    //     }
+    //   ]
+
     // "meta": {
     //     "resourceType": "User",
     //     "created": "2010-01-23T04:56:22Z",
@@ -39,118 +44,145 @@ class User {
 
     //////////////////////////////////////////////////
 
-    public function __construct(?string $id, string $userName, string $displayName, string $email, bool $active, string $passwordHash, array $groups) {
+    public function getId() {
+        return $this->id;
+    }
+    public function setId($id) {
+        $this->id = $id;
+    }
+
+    public function getUserName() {
+        return $this->userName;
+    }
+    public function setUserName($userName) {
         $userName = trim(strtolower($userName));
         if(!preg_match('/^[a-z0-9_\-]{1,32}/', $userName) || strlen($userName) > 32){
             throw new \Exception('EXCEPTION_INVALID_USER_NAME');
         }
         $this->userName = $userName;
-        if (empty($id)) {
-            $this->id = $userName;
-        } else {
-            $this->id = $id;
-        }
-        $this->displayName = $displayName;
+    }
 
+    public function getDisplayName() {
+        return $this->displayName;
+    }
+    public function setDisplayName($displayName) {
+        $this->displayName = $displayName;
+    }
+
+    public function getEmail() {
+        return $this->email;
+    }
+    public function setEmail($email) {
         $email = trim(strtolower($email));
         if (!empty($email) && !filter_var(trim($email), FILTER_VALIDATE_EMAIL)) {
             throw new \Exception('EXCEPTION_INVALID_EMAIL');
         }
-        $this->email = trim(strtolower($email));
-
-        $this->active = $active;
-        $this->passwordHash = $passwordHash;
-        $this->groups = $groups;
+        $this->email = $email;
+    }
+    public function getEmails(): array {
+        return [$this->getEmail()];
+    }
+    public function setEmails(array $emails) {
+        if (!empty($emails)) {
+            $this->setEmail(current($emails));
+        }
     }
 
+    public function getActive() {
+        return $this->active;
+    }
+    public function setActive($active) {
+        $this->active = $active;
+    }
+
+    public function setPassword(string $password) {
+        $this->passwordHash = self::hashPassword($password);
+    }
+    public function setPasswordHash(string $passwordHash) {
+        $this->passwordHash = $passwordHash;
+    }
     public static function hashPassword(string $password) {
         if (empty($password)) {
             throw new \Exception('EXCEPTION_INVALID_PASSWORD');
         }
         return \password_hash($password, PASSWORD_DEFAULT);
     }
-
-    public function setPassword(string $password) {
-        $this->passwordHash = self::hashPassword($password);
-    }
-
     public function verifyPassword(string $password): bool {
         return \password_verify($password, $this->passwordHash);
     }
 
-    // public function setEmail(string $email) {
-    //     if (!empty($email) && !filter_var(trim($email), FILTER_VALIDATE_EMAIL)) {
-    //         throw new \Exception(UserAccess::EXCEPTION_INVALID_EMAIL);
-    //     }
-    //     $this->email = trim(strtolower($email));
-    // }
+    public function getGroups() {
+        return $this->groups;
+    }
+    public function setGroups($groups) {
+        $this->groups = $groups;
+    }
+    public function hasGroup(string $group): bool {
+        return in_array($group, $this->groups);
+    }
+    public function addGroup(string $group) {
+        $this->groups[] = $group;
+    }
+    public function removeGroup(string $group) {
+        if (($key = array_search($group, $this->groups)) !== false) {
+            unset($this->groups[$key]);
+        }
+    }
 
-    // public function getEmails(): array {
-    //     return [$this->getEmail()];
-    // }
-
-    // public function setEmails(array $emails) {
-    //     if (!empty($emails)) {
-    //         $this->setEmail(current($emails));
-    //     }
-    // }
-
-    // public function hasGroup(string $group): bool {
-    //     return in_array($group, $this->groups);
-    // }
-
-    // public function addGroup(string $group) {
-    //     $this->groups[] = $group;
-    // }
-
-    // public function removeGroup(string $group) {
-    //     if (($key = array_search($group, $this->groups)) !== false) {
-    //         unset($this->groups[$key]);
-    //     }
-    // }
+    public function getLoginAttempts() {
+        return $this->loginAttempts;
+    }
+    public function setLoginAttempts($loginAttempts) {
+        $this->loginAttempts = $loginAttempts;
+    }
 
     public function getAttributes(): array {
-        return (array) $this;
+        $attributes = [];
+        $attributes['schemas'] = $this->schemas;
+        $attributes['id'] = $this->id;
+        $attributes['userName'] = $this->userName;
+        $attributes['displayName'] = $this->displayName;
+        $attributes['email'] = $this->email;
+        $attributes['active'] = $this->active;
+        $attributes['passwordHash'] = $this->passwordHash;
+        $attributes['groups'] = $this->groups;
+        $attributes['loginAttempts'] = $this->loginAttempts;
+        return $attributes;
     }
 
     public function toJson(): string {
-        return json_encode($this);
+        return json_encode($this->getAttributes());
     }
 
-    // public function setAttributes(array $attributes) {
-    //     parent::setAttributes($attributes);
-    //     // if (array_key_exists('userName', $attributes)) {
-    //     //     $this->setUserName($attributes['userName']);
-    //     // }
-    //     if (array_key_exists('givenName', $attributes)) {
-    //         $this->setGivenName($attributes['givenName']);
-    //     }
-    //     if (array_key_exists('familyName', $attributes)) {
-    //         $this->setFamilyName($attributes['familyName']);
-    //     }
-    //     if (!empty($attributes['passwordHash'])) {
-    //         $this->setPasswordHash($attributes['passwordHash']);
-    //     } else if (!empty($attributes['password'])) {
-    //         $this->setPassword($attributes['password']);
-    //     }
-    //     if (array_key_exists('email', $attributes)) {
-    //         $this->setEmail($attributes['email']);
-    //     }
-    //     if (array_key_exists('emails', $attributes)) {
-    //         $this->setEmails($attributes['emails']);
-    //     }
-    //     if (array_key_exists('active', $attributes)) {
-    //         $this->setActive($attributes['active']);
-    //     }
-    //     if (array_key_exists('loginAttempts', $attributes)) {
-    //         $this->setLoginAttempts($attributes['loginAttempts']);
-    //     }
-    //     if (array_key_exists('groups', $attributes)) {
-    //         $this->setRoles($attributes['groups']);
-    //     }
-    //     if (array_key_exists('roles', $attributes)) {
-    //         $this->setRoles($attributes['roles']);
-    //     }
-    // }
+    public function setAttributes(array $attributes) {
+        if (array_key_exists('id', $attributes)) {
+            $this->setId($attributes['id']);
+        }
+        if (array_key_exists('userName', $attributes)) {
+            $this->setUserName($attributes['userName']);
+        }
+        if (array_key_exists('displayName', $attributes)) {
+            $this->setDisplayName($attributes['displayName']);
+        }
+        if (array_key_exists('passwordHash', $attributes)) {
+            $this->setPasswordHash($attributes['passwordHash']);
+        } else if (array_key_exists('password', $attributes)) {
+            $this->setPassword($attributes['password']);
+        }
+        if (array_key_exists('email', $attributes)) {
+            $this->setEmail($attributes['email']);
+        } else if (array_key_exists('emails', $attributes)) {
+            $this->setEmails($attributes['emails']);
+        }
+        if (array_key_exists('active', $attributes)) {
+            $this->setActive($attributes['active']);
+        }
+        if (array_key_exists('loginAttempts', $attributes)) {
+            $this->setLoginAttempts($attributes['loginAttempts']);
+        }
+        if (array_key_exists('groups', $attributes)) {
+            $this->setGroups($attributes['groups']);
+        }
+    }
 
 }

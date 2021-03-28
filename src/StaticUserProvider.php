@@ -29,11 +29,11 @@ class StaticUserProvider implements UserProviderInterface {
     }
 
     public function createUser(User $user): User {
-        if ($this->isUserNameExisting($user->userName)) {
+        if ($this->isUserNameExisting($user->getUserName())) {
             throw new \Exception('EXCEPTION_USER_ALREADY_EXIST');
         } else {
-            $user->id = $user->userName;
-            $this->entries[$user->id] = $user;
+            $user->setId($user->getUserName());
+            $this->entries[$user->getId()] = $user;
             return $user;
         }
     }
@@ -64,9 +64,9 @@ class StaticUserProvider implements UserProviderInterface {
     }
 
     public function updateUser(User $user): User {
-        if ($this->isIdExisting($user->userName)) {
-            $user->id = $user->userName;
-            $this->entries[$user->id] = $user;
+        if ($this->isIdExisting($user->getUserName())) {
+            $user->setId($user->getUserName());
+            $this->entries[$user->getId()] = $user;
             return $user;
         } else {
             throw new \Exception('EXCEPTION_USER_NOT_EXIST');

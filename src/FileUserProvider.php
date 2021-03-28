@@ -31,11 +31,11 @@ class FileUserProvider implements UserProviderInterface {
     }
 
     public function createUser(User $user): User {
-        if ($this->isUserNameExisting($user->userName)) {
+        if ($this->isUserNameExisting($user->getUserName())) {
             throw new \Exception('EXCEPTION_USER_ALREADY_EXIST');
         } else {
-            $user->id = $user->userName;
-            $id = $this->db->create($user->getAttributes(), $user->userName);
+            $user->setId($user->getUserName());
+            $id = $this->db->create($user->getAttributes(), $user->getUserName());
             return $user;
         }
     }
@@ -55,8 +55,8 @@ class FileUserProvider implements UserProviderInterface {
     }
 
     public function updateUser(User $user): User {
-        if ($this->isIdExisting($user->userName)) {
-            $this->db->update($user->userName, $user->getAttributes());
+        if ($this->isIdExisting($user->getUserName())) {
+            $this->db->update($user->getUserName(), $user->getAttributes());
             return $user;
         } else {
             throw new \Exception('EXCEPTION_USER_NOT_EXIST');
@@ -85,7 +85,9 @@ class FileUserProvider implements UserProviderInterface {
     }
 
     private function documentToEntry(array $attributes): User {
-        return new User($attributes['userName'], $attributes['userName'], $attributes['displayName'], $attributes['email'], $attributes['active'], $attributes['passwordHash'], $attributes['groups']);
+        $user = new User();
+        $user->setAttributes($attributes);
+        return $user;
     }
 
 }
