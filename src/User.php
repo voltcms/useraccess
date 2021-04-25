@@ -48,7 +48,11 @@ class User {
         return $this->id;
     }
     public function setId($id) {
-        $this->id = $id;
+        $id = trim(strtolower($id));
+        if(!preg_match('/^[a-z0-9_\-]{1,32}/', $id) || strlen($id) > 32){
+            throw new \Exception('EXCEPTION_INVALID_USER_NAME');
+        }
+        $this->id = trim(strtolower($id));
     }
 
     public function getUserName() {
@@ -66,7 +70,7 @@ class User {
         return $this->displayName;
     }
     public function setDisplayName($displayName) {
-        $this->displayName = $displayName;
+        $this->displayName = trim($displayName);
     }
 
     public function getEmail() {
@@ -91,15 +95,18 @@ class User {
     public function getActive() {
         return $this->active;
     }
+    public function isActive() {
+        return $this->active;
+    }
     public function setActive($active) {
         $this->active = $active;
     }
 
     public function setPassword(string $password) {
-        $this->passwordHash = self::hashPassword($password);
+        $this->passwordHash = self::hashPassword(trim($password));
     }
     public function setPasswordHash(string $passwordHash) {
-        $this->passwordHash = $passwordHash;
+        $this->passwordHash = trim($passwordHash);
     }
     public static function hashPassword(string $password) {
         if (empty($password)) {
@@ -108,7 +115,7 @@ class User {
         return \password_hash($password, PASSWORD_DEFAULT);
     }
     public function verifyPassword(string $password): bool {
-        return \password_verify($password, $this->passwordHash);
+        return \password_verify(trim($password), $this->passwordHash);
     }
 
     public function getGroups() {

@@ -6,6 +6,7 @@ use \PragmaPHP\UserAccess\FileUserProvider;
 use \PragmaPHP\UserAccess\StaticUserProvider;
 use \PragmaPHP\UserAccess\User;
 use \PragmaPHP\UserAccess\UserProviderInterface;
+use \PragmaPHP\UserAccess\SessionAuth;
 
 class UserProviderTest extends TestCase {
 
@@ -115,6 +116,31 @@ class UserProviderTest extends TestCase {
         $users = $provider->getUsers();
         $this->assertNotEmpty($users);
         $this->assertEquals(3, count($users));
+
+        // $_SERVER[SessionAuth::HTTP_X_CSRF_TOKEN] = 'fetch';
+        SessionAuth::startSession();
+        $this->assertNotEmpty($_SESSION[SessionAuth::SESSION_LOGIN_CSRF_TOKEN]);
+        $this->assertFalse(SessionAuth::login([$provider], 'userid1', 'password1_xxx'));
+        $this->assertFalse(SessionAuth::login([$provider], 'xxxxx', 'password1_xxx'));
+        $this->assertFalse(SessionAuth::isLoggedIn());
+        $this->assertFalse($_SESSION[SessionAuth::SESSION_LOGIN_AUTHENTICATED]);
+        $this->assertEquals($_SESSION[SessionAuth::SESSION_LOGIN_USERNAME], '');
+        $this->assertTrue($_SESSION[SessionAuth::SESSION_LOGIN_GROUPS] == []);
+        $this->assertTrue(SessionAuth::login([$provider], 'userid1', 'password1_update'));
+        $this->assertTrue(SessionAuth::isLoggedIn());
+        $this->assertTrue($_SESSION[SessionAuth::SESSION_LOGIN_AUTHENTICATED]);
+        $this->assertEquals($_SESSION[SessionAuth::SESSION_LOGIN_USERNAME], 'userid1');
+        $this->assertTrue($_SESSION[SessionAuth::SESSION_LOGIN_GROUPS] == ['Administrators']);
+        $this->assertNotEmpty(SessionAuth::getLoginInfo());
+        SessionAuth::logOut();
+        $this->assertFalse($_SESSION[SessionAuth::SESSION_LOGIN_AUTHENTICATED]);
+        $this->assertEquals($_SESSION[SessionAuth::SESSION_LOGIN_USERNAME], '');
+        $this->assertTrue($_SESSION[SessionAuth::SESSION_LOGIN_GROUPS] == []);
+        $this->assertNotEmpty(SessionAuth::getLoginInfo());
+
+        // $this->assertFalse($user_test1->verifyPassword('password1'));
+        // $this->assertTrue($user_test1->verifyPassword('password1_update'));
+        // $this->assertTrue($user_test1->getGroups() == ['Administrators']);
 
         $provider->deleteUsers();
     }

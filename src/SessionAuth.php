@@ -42,42 +42,40 @@ class SessionAuth {
                     }
                 }
                 if (array_key_exists(self::HTTP_X_CSRF_TOKEN, $_SERVER) && $_SERVER[self::HTTP_X_CSRF_TOKEN] === 'fetch') {
-                    setHeader(self::SESSION_LOGIN_CSRF_TOKEN, $_SESSION[self::SESSION_LOGIN_CSRF_TOKEN]);
+                    self::setHeader(self::SESSION_LOGIN_CSRF_TOKEN, $_SESSION[self::SESSION_LOGIN_CSRF_TOKEN]);
                 }
             }
         }
     }
 
-    public static function login(UserProviderInterface $userProviders, string $userName, string $password): String {
+    public static function login(array $userProviders, string $userName, string $password): bool {
+        self::startSession();
+        $result = false;
         $userName = trim(strtolower($userName));
         $password = trim($password);
-        foreach ($userProviders as $userProvider) {
-            if (empty($userName) || empty($password) || !$userProvider->isUserNameExisting($userName)) {
-                // throw new \Exception(UserAccess::EXCEPTION_AUTHENTICATION_FAILED);
-                return echoJsonLogin();
-            }
-            $users = $userProvider->findUsers('uniqueName', $uniqueName);
-            if (empty($users) || \count($users) > 1) {
-                // throw new \Exception(UserAccess::EXCEPTION_AUTHENTICATION_FAILED);
-                return echoJsonLogin();
-            } else {
-                $user = current($users);
-            }
-            if (!$user->isActive() || $user->getLoginAttempts() > 10) {
-                // throw new \Exception(UserAccess::EXCEPTION_AUTHENTICATION_FAILED);
-                return echoJsonLogin();
-            }
-            if ($user->verifyPassword($secret)){
-                $_SESSION[self::SESSION_LOGIN_USERID] = $user->getId();
-                $_SESSION[self::SESSION_LOGIN_USERNAME] = $user->getUserName();
-                $_SESSION[self::SESSION_LOGIN_AUTHENTICATED] = true;
-                // $_SESSION[SESSION_LOGIN_ATTEMPTS] = 0;
-                return echoJsonLogin();
-            } else {
-                // throw new \Exception(UserAccess::EXCEPTION_AUTHENTICATION_FAILED);
-                return echoJsonLogin();
+        if (!empty($userProviders) && !empty($userName) && !empty($password)) {
+            foreach ($userProviders as $userProvider) {
+                if ($userProvider->isUserNameExisting($userName)) {
+                    $user = $userProvider->getUser($userName);
+                    if ($user->isActive() && $_SESSION[self::SESSION_LOGIN_ATTEMPTS] < 11) {
+                        if ($user->verifyPassword($password)){
+                            $_SESSION[self::SESSION_LOGIN_AUTHENTICATED] = true;
+                            $_SESSION[self::SESSION_LOGIN_USERNAME] = $user->getUserName();
+                            $_SESSION[self::SESSION_LOGIN_GROUPS] = $user->getGroups();
+                            $_SESSION[self::SESSION_LOGIN_ATTEMPTS] = 0;
+                            $result = true;
+                        }
+                    }
+                }
             }
         }
+        if (!$result) {
+            $_SESSION[self::SESSION_LOGIN_AUTHENTICATED] = false;
+            $_SESSION[self::SESSION_LOGIN_USERNAME] = '';
+            $_SESSION[self::SESSION_LOGIN_GROUPS] = [];
+            $_SESSION[self::SESSION_LOGIN_ATTEMPTS] = $_SESSION[self::SESSION_LOGIN_ATTEMPTS] + 1;
+        }
+        return $result;
     }
 
     public static function isLoggedIn(): bool {
@@ -92,20 +90,23 @@ class SessionAuth {
         }
     }
 
+    public static function getLoginInfo(): array {
+        self::startSession();
+        return [
+            self::SESSION_LOGIN_AUTHENTICATED => $_SESSION[self::SESSION_LOGIN_AUTHENTICATED], 
+            self::SESSION_LOGIN_USERNAME => $_SESSION[self::SESSION_LOGIN_USERNAME],
+            self::SESSION_LOGIN_GROUPS => $_SESSION[self::SESSION_LOGIN_GROUPS]
+        ];
+    }
+
     public static function echoJsonLoginInfo(): string {
         self::setHeader('Content-Type', 'application/json');
         echo json_encode(self::getLoginInfo());
         exit();
     }
 
-    private static function getLoginInfo(): array {
-        return [
-            self::SESSION_LOGIN_AUTHENTICATED => $_SESSION[self::SESSION_LOGIN_AUTHENTICATED], 
-            self::SESSION_LOGIN_USERNAME => $_SESSION[self::SESSION_LOGIN_USERNAME]
-        ];
-    }
-
     public static function setCsrfTokenHeader(): void {
+        self::startSession();
         if (!array_key_exists(HTTP_X_CSRF_TOKEN, $_SESSION)) {
             $_SESSION[HTTP_X_CSRF_TOKEN] = bin2hex(random_bytes(32));;
         }
@@ -114,12 +115,12 @@ class SessionAuth {
         }
     }
 
-    public static function logout(): array {
+    public static function logout() {
+        self::startSession();
         $_SESSION[self::SESSION_LOGIN_AUTHENTICATED] = false;
         $_SESSION[self::SESSION_LOGIN_USERNAME] = '';
         $_SESSION[self::SESSION_LOGIN_GROUPS] = [];
         $_SESSION[self::SESSION_LOGIN_ATTEMPTS] = 0;
-        self::echoJsonLoginInfo();
     }
 
     private static function setHeader(string $key, string $value) {
