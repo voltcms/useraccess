@@ -123,11 +123,13 @@ class UserProviderTest extends TestCase {
         $this->assertFalse(SessionAuth::login([$provider], 'userid1', 'password1_xxx'));
         $this->assertFalse(SessionAuth::login([$provider], 'xxxxx', 'password1_xxx'));
         $this->assertFalse(SessionAuth::isLoggedIn());
+        $this->assertEquals($_SESSION[SessionAuth::SESSION_LOGIN_ATTEMPTS], 2);
         $this->assertFalse($_SESSION[SessionAuth::SESSION_LOGIN_AUTHENTICATED]);
         $this->assertEquals($_SESSION[SessionAuth::SESSION_LOGIN_USERNAME], '');
         $this->assertTrue($_SESSION[SessionAuth::SESSION_LOGIN_GROUPS] == []);
         $this->assertTrue(SessionAuth::login([$provider], 'userid1', 'password1_update'));
         $this->assertTrue(SessionAuth::isLoggedIn());
+        $this->assertEquals($_SESSION[SessionAuth::SESSION_LOGIN_ATTEMPTS], 0);
         $this->assertTrue($_SESSION[SessionAuth::SESSION_LOGIN_AUTHENTICATED]);
         $this->assertEquals($_SESSION[SessionAuth::SESSION_LOGIN_USERNAME], 'userid1');
         $this->assertTrue($_SESSION[SessionAuth::SESSION_LOGIN_GROUPS] == ['Administrators']);
