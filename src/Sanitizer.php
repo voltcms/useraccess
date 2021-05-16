@@ -4,7 +4,7 @@ namespace PragmaPHP\UserAccess;
 
 class Sanitizer {
 
-    public static function sanitizeString($value) {
+    public static function sanitizeString(string $value): string {
         $value = trim($value);
         $value = strtolower($value);
         $value = preg_replace('/\s+/', '-', $value);
@@ -12,8 +12,12 @@ class Sanitizer {
         return $value;
     }
 
-    public static function sanitizeStringToArray($value) {
-        array_map('self::sanitizeString', explode(',', $value)),
+    public static function sanitizeStringToArray(string $value): array {
+        return self::sanitizeArray(explode(',', $value));
+    }
+
+    public static function sanitizeArray(array $value): array {
+        return array_map('self::sanitizeString', $value);
     }
 
 }

@@ -139,58 +139,11 @@ class SessionAuth {
         }
     }
 
-    function enforceMemberOfGroup($required_groups) {
-        enforceLoggedIn();
-        if (!isMemberOfGroup($required_groups)) {
+    public static function enforceMemberOfGroup($required_groups) {
+        self::enforceLoggedIn();
+        if (!self::isMemberOfGroup($required_groups)) {
             http_response_code(401);
             self::echoJsonLoginInfo();
-        }
-    }
-
-    function protectContent($loggedIn, $memberOfGroups, $required_groups) {
-        // user must be logged in
-        if ($loggedIn && self::isLoggedIn()) {
-            if ($memberOfGroups && self::isMemberOfGroup($required_groups)) {
-                return true;
-            }
-            if (!$memberOfGroups && !self::isMemberOfGroup($required_groups)) {
-                return true;
-            }
-        }
-        if (!$loggedIn && !self::isLoggedIn()) {
-            return true;
-        }
-        return false;
-    }
-
-    function protectPage($login_redirect, $forbidden_redirect, $required_groups, $login_page, $forbidden_page) {
-        if (!self::isLoggedIn()) {
-            if ($login_redirect) {
-                header('Location: ' . $login_page . '?ref=' . $_SERVER['REQUEST_URI']);
-                exit();
-            } else {
-                if ($forbidden_redirect) {
-                    header('Location: ' . $forbidden_page . '?ref=' . $_SERVER['REQUEST_URI']);
-                    exit();
-                } else {
-                    ob_end_clean();
-                    http_response_code(401);
-                    echo "<h1>Forbidden</h1>";
-                    exit;
-                }
-            }
-        } else {
-            if (!self::isMemberOfGroup($required_groups)) {
-                if ($forbidden_redirect) {
-                    header('Location: ' . $forbidden_page . '?ref=' . $_SERVER['REQUEST_URI']);
-                    exit();
-                } else {
-                    ob_end_clean();
-                    http_response_code(401);
-                    echo "<h1>Forbidden</h1>";
-                    exit;
-                }
-            }
         }
     }
 

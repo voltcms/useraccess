@@ -62,12 +62,12 @@ class UserProviderTest extends TestCase {
         $this->assertEquals('userid1', $user_test1->getUserName());
         $this->assertEquals('userid1.test@test.com', $user_test1->getEmail());
         // $this->assertEquals(['userid1.test@test.com'], $user_test1->getEmails());
-        $this->assertTrue($user_test1->getGroups() == ['Everyone', 'Administrators']);
+        $this->assertTrue($user_test1->getGroups() == ['everyone', 'administrators']);
         $this->assertFalse($user_test1->getGroups() == ['Guests']);
         $this->assertEquals('userid_2', $user_test2->getUserName());
         $this->assertEquals('userid_2.test@test.com', $user_test2->getEmail());
         // $this->assertEquals(['userid_2.test@test.com'], $user_test2->getEmails());
-        $this->assertTrue($user_test2->getGroups() == ['Everyone', 'Administrators']);
+        $this->assertTrue($user_test2->getGroups() == ['everyone', 'administrators']);
         $this->assertFalse($user_test2->getGroups() == ['Guests']);
         $this->assertTrue($user_test1->verifyPassword('password1'));
         $this->assertTrue($user_test2->verifyPassword('password2'));
@@ -100,7 +100,7 @@ class UserProviderTest extends TestCase {
         $this->assertEquals('userid1.test_update@test.com', $user_test1->getEmail());
         $this->assertFalse($user_test1->verifyPassword('password1'));
         $this->assertTrue($user_test1->verifyPassword('password1_update'));
-        $this->assertTrue($user_test1->getGroups() == ['Administrators']);
+        $this->assertTrue($user_test1->getGroups() == ['administrators']);
 
         // delete attribute test
         $user_test1->setDisplayName('');
@@ -132,7 +132,7 @@ class UserProviderTest extends TestCase {
         $this->assertEquals($_SESSION[SessionAuth::SESSION_LOGIN_ATTEMPTS], 0);
         $this->assertTrue($_SESSION[SessionAuth::SESSION_LOGIN_AUTHENTICATED]);
         $this->assertEquals($_SESSION[SessionAuth::SESSION_LOGIN_USERNAME], 'userid1');
-        $this->assertTrue($_SESSION[SessionAuth::SESSION_LOGIN_GROUPS] == ['Administrators']);
+        $this->assertTrue($_SESSION[SessionAuth::SESSION_LOGIN_GROUPS] == ['administrators']);
         $this->assertNotEmpty(SessionAuth::getLoginInfo());
         SessionAuth::logOut();
         $this->assertFalse($_SESSION[SessionAuth::SESSION_LOGIN_AUTHENTICATED]);
