@@ -3,7 +3,6 @@
 namespace PragmaPHP\UserAccess;
 
 use \PragmaPHP\UserAccess\Sanitizer;
-use \PragmaPHP\UserAccess\Util;
 
 // https://tools.ietf.org/html/rfc7643#section-8
 

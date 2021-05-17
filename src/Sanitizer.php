@@ -12,12 +12,12 @@ class Sanitizer {
         return $value;
     }
 
-    public static function sanitizeStringToArray(string $value): array {
-        return self::sanitizeArray(explode(',', $value));
-    }
-
     public static function sanitizeArray(array $value): array {
         return array_map('self::sanitizeString', $value);
+    }
+
+    public static function sanitizeStringToArray(string $value): array {
+        return self::sanitizeArray(explode(',', $value));
     }
 
 }

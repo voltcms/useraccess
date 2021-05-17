@@ -3,7 +3,7 @@
 namespace PragmaPHP\UserAccess;
 
 use \PragmaPHP\UserAccess\User;
-use \PragmaPHP\UserAccess\Util;
+use \PragmaPHP\UserAccess\Sanitizer;
 
 class SessionAuth {
 
@@ -131,8 +131,8 @@ class SessionAuth {
     }
 
     public static function isMemberOfGroup($required_groups) {
-        $required_groups = array_map('Util\\sanitizeString', explode(',', $required_groups));
-        if (!empty($required_groups[0]) && empty(array_intersect($required_groups, $_SESSION[SESSION_LOGIN_GROUPS]))) {
+        $required_groups = Sanitizer::sanitizeStringToArray($required_groups);
+        if (!empty($required_groups[0]) && empty(array_intersect($required_groups, $_SESSION[self::SESSION_LOGIN_GROUPS]))) {
             return false;
         } else {
             return true;
