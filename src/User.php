@@ -125,6 +125,11 @@ class User {
     public function getGroups(): array {
         return $this->groups;
     }
+    public function addGroups(array $groups) {
+        foreach ($groups as $group) {
+            $this->addGroup($group);
+        }
+    }
     public function setGroups(array $groups) {
         $this->groups = Sanitizer::sanitizeArray($groups);
     }

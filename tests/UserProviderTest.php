@@ -118,27 +118,27 @@ class UserProviderTest extends TestCase {
         $this->assertEquals(3, count($users));
 
         // $_SERVER[SessionAuth::HTTP_X_CSRF_TOKEN] = 'fetch';
-        SessionAuth::startSession();
+        $sessionAuth = SessionAuth::getInstance([$provider]);
         $this->assertNotEmpty($_SESSION[SessionAuth::SESSION_LOGIN_CSRF_TOKEN]);
-        $this->assertFalse(SessionAuth::login([$provider], 'userid1', 'password1_xxx'));
-        $this->assertFalse(SessionAuth::login([$provider], 'xxxxx', 'password1_xxx'));
-        $this->assertFalse(SessionAuth::isLoggedIn());
+        $this->assertFalse($sessionAuth->login('userid1', 'password1_xxx'));
+        $this->assertFalse($sessionAuth->login('xxxxx', 'password1_xxx'));
+        $this->assertFalse($sessionAuth->isLoggedIn());
         $this->assertEquals($_SESSION[SessionAuth::SESSION_LOGIN_ATTEMPTS], 2);
         $this->assertFalse($_SESSION[SessionAuth::SESSION_LOGIN_AUTHENTICATED]);
         $this->assertEquals($_SESSION[SessionAuth::SESSION_LOGIN_USERNAME], '');
         $this->assertTrue($_SESSION[SessionAuth::SESSION_LOGIN_GROUPS] == []);
-        $this->assertTrue(SessionAuth::login([$provider], 'userid1', 'password1_update'));
-        $this->assertTrue(SessionAuth::isLoggedIn());
+        $this->assertTrue($sessionAuth->login('userid1', 'password1_update'));
+        $this->assertTrue($sessionAuth->isLoggedIn());
         $this->assertEquals($_SESSION[SessionAuth::SESSION_LOGIN_ATTEMPTS], 0);
         $this->assertTrue($_SESSION[SessionAuth::SESSION_LOGIN_AUTHENTICATED]);
         $this->assertEquals($_SESSION[SessionAuth::SESSION_LOGIN_USERNAME], 'userid1');
         $this->assertTrue($_SESSION[SessionAuth::SESSION_LOGIN_GROUPS] == ['administrators']);
-        $this->assertNotEmpty(SessionAuth::getLoginInfo());
-        SessionAuth::logOut();
+        $this->assertNotEmpty($sessionAuth->getLoginInfo());
+        $sessionAuth->logOut();
         $this->assertFalse($_SESSION[SessionAuth::SESSION_LOGIN_AUTHENTICATED]);
         $this->assertEquals($_SESSION[SessionAuth::SESSION_LOGIN_USERNAME], '');
         $this->assertTrue($_SESSION[SessionAuth::SESSION_LOGIN_GROUPS] == []);
-        $this->assertNotEmpty(SessionAuth::getLoginInfo());
+        $this->assertNotEmpty($sessionAuth->getLoginInfo());
 
         // $this->assertFalse($user_test1->verifyPassword('password1'));
         // $this->assertTrue($user_test1->verifyPassword('password1_update'));
