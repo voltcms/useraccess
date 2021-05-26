@@ -17,12 +17,13 @@ class SessionAuth {
     const SESSION_LOGIN_CSRF_TOKEN = 'X-CSRF-Token';
     const MAX_LOGIN_ATTEMPTS = 10;
 
-    private static $instance;
+    private static ?SessionAuth $instance = null;
 
-    private array $userProviders;
-    private ?User $loggedInUser;
+    private ?array $userProviders = null;
+    private ?User $loggedInUser = null;
 
-    public static function getInstance(array $userProviders): SessionAuth {
+    // public static function getInstance(array $userProviders): SessionAuth {
+    public static function getInstance($userProviders): SessionAuth {
         if (empty($userProviders)) {
             throw new Exception("User Providers cannot be empty");
         }
@@ -77,7 +78,8 @@ class SessionAuth {
         }
     }
 
-    private function setSessionInfo(bool $loggedIn, string $userName, array $groups, int $loginAttempts, ?User $user) {
+    // private function setSessionInfo(bool $loggedIn, string $userName, array $groups, int $loginAttempts, ?User $user) {
+    private function setSessionInfo($loggedIn, $userName, $groups, $loginAttempts, $user) {
         $_SESSION[self::SESSION_LOGIN_AUTHENTICATED] = $loggedIn;
         $_SESSION[self::SESSION_LOGIN_USERNAME] = $userName;
         $_SESSION[self::SESSION_LOGIN_GROUPS] = $groups;
@@ -85,7 +87,8 @@ class SessionAuth {
         $this->loggedInUser = $user;
     }
 
-    public function login(string $userName, string $password): bool {
+    // public function login(string $userName, string $password): bool {
+    public function login($userName, $password): bool {
         $result = false;
         $userName = trim(strtolower($userName));
         $password = trim($password);
@@ -168,7 +171,8 @@ class SessionAuth {
         }
     }
 
-    private function setHeader(string $key, string $value) {
+    // private function setHeader(string $key, string $value) {
+    private function setHeader($key, $value) {
         header($key . ': ' . $value);
     }
 
