@@ -81,8 +81,7 @@ class SessionAuth {
         }
     }
 
-    // private function setSessionInfo(bool $loggedIn, string $userName, array $groups, int $loginAttempts, ?User $user) {
-    private function setSessionInfo($loggedIn, $userName, $groups, $loginAttempts, $user) {
+    private function setSessionInfo(bool $loggedIn, string $userName, array $groups, int $loginAttempts, ?User $user) {
         $_SESSION[self::SESSION_LOGIN_AUTHENTICATED] = $loggedIn;
         $_SESSION[self::SESSION_LOGIN_USERNAME] = $userName;
         $_SESSION[self::SESSION_LOGIN_GROUPS] = $groups;
@@ -90,8 +89,7 @@ class SessionAuth {
         $this->loggedInUser = $user;
     }
 
-    // public function login(string $userName, string $password): bool {
-    public function login($userName, $password): bool {
+    public function login(string $userName, string $password): bool {
         $result = false;
         $userName = trim(strtolower($userName));
         $password = trim($password);
@@ -174,8 +172,7 @@ class SessionAuth {
         }
     }
 
-    // private function setHeader(string $key, string $value) {
-    private function setHeader($key, $value) {
+    private function setHeader(string $key, string $value) {
         header($key . ': ' . $value);
     }
 
