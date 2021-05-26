@@ -17,10 +17,13 @@ class SessionAuth {
     const SESSION_LOGIN_CSRF_TOKEN = 'X-CSRF-Token';
     const MAX_LOGIN_ATTEMPTS = 10;
 
-    private static ?SessionAuth $instance = null;
+    // private static ?SessionAuth $instance = null;
+    // private ?array $userProviders = null;
+    // private ?User $loggedInUser = null;
 
-    private ?array $userProviders = null;
-    private ?User $loggedInUser = null;
+    private static $instance = null;
+    private $userProviders = null;
+    private $loggedInUser = null;
 
     // public static function getInstance(array $userProviders): SessionAuth {
     public static function getInstance($userProviders): SessionAuth {
