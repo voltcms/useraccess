@@ -11,7 +11,7 @@ use \PragmaPHP\UserAccess\SessionAuth;
 class UserProviderTest extends TestCase {
 
     public function test() {
-        $this->performTest(new StaticUserProvider());
+        $this->performTest(StaticUserProvider::getInstance());
         $this->performTest(new FileUserProvider('testdata/user'));
     }
 

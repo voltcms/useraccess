@@ -14,14 +14,18 @@ class SessionAuth {
     const SESSION_LOGIN_USERNAME = 'SESSION_LOGIN_USERNAME';
     const SESSION_LOGIN_GROUPS = 'SESSION_LOGIN_GROUPS';
     const SESSION_LOGIN_ATTEMPTS = 'SESSION_LOGIN_ATTEMPTS';
+    const SESSION_LAST_REFRESH = 'SESSION_LAST_REFRESH';
     const SESSION_LOGIN_CSRF_TOKEN = 'X-CSRF-Token';
     const MAX_LOGIN_ATTEMPTS = 10;
+    const SESSION_REFRESH_TIME = 60;
 
     // private static ?SessionAuth $instance = null;
     // private ?array $userProviders = null;
     // private ?User $loggedInUser = null;
 
     private static $instance = null;
+
+    private $now = 0;
     private $userProviders = null;
     private $loggedInUser = null;
 
@@ -33,6 +37,7 @@ class SessionAuth {
         if (self::$instance === null) {
             self::$instance = new static();
         }
+        self::$instance->now = time();
         self::$instance->userProviders = $userProviders;
         self::$instance->startSession();
         return self::$instance;
@@ -78,15 +83,45 @@ class SessionAuth {
             if (array_key_exists(self::HTTP_X_CSRF_TOKEN, $_SERVER) && $_SERVER[self::HTTP_X_CSRF_TOKEN] === 'fetch') {
                 $this->setHeader(self::SESSION_LOGIN_CSRF_TOKEN, $_SESSION[self::SESSION_LOGIN_CSRF_TOKEN]);
             }
+            if (!array_key_exists(self::SESSION_LAST_REFRESH, $_SESSION)) {
+                $_SESSION[self::SESSION_LAST_REFRESH] = 0;
+            }
+
+            // refresh logged in user if last refresh time is too old
+            if ($_SESSION[self::SESSION_LOGIN_AUTHENTICATED] === true && 
+                $_SESSION[self::SESSION_LAST_REFRESH] < self::$instance->now - self::SESSION_REFRESH_TIME) {
+                $user = self::$instance->getUser($_SESSION[self::SESSION_LOGIN_USERNAME]);
+                if ($user !== null && $user->isActive()) {
+                    self::$instance->setSessionInfo(true, $user->getUserName(), $user->getGroups(), 0, $user);
+                } else {
+                    self::$instance->setSessionInfo(false, '', [] , 0, null);
+                }
+            }
         }
     }
 
-    private function setSessionInfo(bool $loggedIn, string $userName, array $groups, int $loginAttempts, ?User $user) {
-        $_SESSION[self::SESSION_LOGIN_AUTHENTICATED] = $loggedIn;
+    private function getUser(string $userName): ?User {
+        if (is_array(self::$instance->userProviders)) {
+            foreach (self::$instance->userProviders as $userProvider) {
+                if ($userProvider->isUserNameExisting($userName)) {
+                    return $userProvider->getUser($userName);
+                }
+            }
+        } else {
+            if (self::$instance->userProviders->isUserNameExisting($userName)) {
+                return self::$instance->userProviders->getUser($userName);
+            }
+        }
+        return null;
+    }
+
+    private function setSessionInfo(bool $isLoggedIn, string $userName, array $groups, int $loginAttempts, ?User $user) {
+        $_SESSION[self::SESSION_LOGIN_AUTHENTICATED] = $isLoggedIn;
         $_SESSION[self::SESSION_LOGIN_USERNAME] = $userName;
         $_SESSION[self::SESSION_LOGIN_GROUPS] = $groups;
         $_SESSION[self::SESSION_LOGIN_ATTEMPTS] = $loginAttempts;
-        $this->loggedInUser = $user;
+        $_SESSION[self::SESSION_LAST_REFRESH] = self::$instance->now;
+        self::$instance->loggedInUser = $user;
     }
 
     public function login(string $userName, string $password): bool {
@@ -94,16 +129,11 @@ class SessionAuth {
         $userName = trim(strtolower($userName));
         $password = trim($password);
         if (!empty($userName) && !empty($password)) {
-            foreach ($this->userProviders as $userProvider) {
-                if ($userProvider->isUserNameExisting($userName)) {
-                    $user = $userProvider->getUser($userName);
-                    if ($user->isActive() && $_SESSION[self::SESSION_LOGIN_ATTEMPTS] < self::MAX_LOGIN_ATTEMPTS + 1) {
-                        if ($user->verifyPassword($password)){
-                            $this->setSessionInfo(true, $user->getUserName(), $user->getGroups(), 0, $user);
-                            $result = true;
-                            break;
-                        }
-                    }
+            $user = $this->getUser($userName);
+            if ($user !== null && $user->isActive() && $_SESSION[self::SESSION_LOGIN_ATTEMPTS] < self::MAX_LOGIN_ATTEMPTS + 1) {
+                if ($user->verifyPassword($password)){
+                    $this->setSessionInfo(true, $user->getUserName(), $user->getGroups(), 0, $user);
+                    $result = true;
                 }
             }
         }
@@ -114,26 +144,7 @@ class SessionAuth {
     }
 
     public function isLoggedIn(): bool {
-        $result = (!empty($_SESSION) && array_key_exists(self::SESSION_LOGIN_AUTHENTICATED, $_SESSION) && $_SESSION[self::SESSION_LOGIN_AUTHENTICATED] === true);
-        if ($result) {
-            if ($this->loggedInUser === null) {
-                $result = false;
-                foreach ($this->userProviders as $userProvider) {
-                    if ($userProvider->isUserNameExisting($_SESSION[self::SESSION_LOGIN_USERNAME])) {
-                        $user = $userProvider->getUser($_SESSION[self::SESSION_LOGIN_USERNAME]);
-                        if ($user->isActive()) {
-                            $this->setSessionInfo(true, $user->getUserName(), $user->getGroups(), 0, $user);
-                            $result = true;
-                            break;
-                        } else {
-                            $this->setSessionInfo(false, '', [] , 0, null);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        return $result;
+        return $_SESSION[self::SESSION_LOGIN_AUTHENTICATED];
     }
 
     public function enforceLoggedIn(): void {
@@ -176,8 +187,16 @@ class SessionAuth {
         header($key . ': ' . $value);
     }
 
-    public function getLoggedInUser(): User {
-        return $this->loggedInUser;
+    public function getLoggedInUser(): ?User {
+        if ($this->isLoggedIn()) {
+            if ($this->loggedInUser !== null) {
+                return $this->loggedInUser;
+            } else {
+                $this->getUser($_SESSION[self::SESSION_LOGIN_USERNAME]);
+            }
+        } else {
+            return null;
+        }
     }
 
     public function isMemberOfGroup($required_groups) {

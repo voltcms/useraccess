@@ -137,7 +137,10 @@ class User {
         return in_array(Sanitizer::sanitizeString($group), $this->groups);
     }
     public function addGroup(string $group) {
-        $this->groups[] = Sanitizer::sanitizeString($group);
+        $group = Sanitizer::sanitizeString($group);
+        if ($group !== '' && !in_array($group, $this->groups)) {
+            $this->groups[] = $group;
+        }
     }
     public function removeGroup(string $group) {
         if (($key = array_search(Sanitizer::sanitizeString($group), $this->groups)) !== false) {

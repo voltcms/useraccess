@@ -4,7 +4,24 @@ namespace PragmaPHP\UserAccess;
 
 class StaticUserProvider implements UserProviderInterface {
 
+    private static $instance = null;
+
     private $entries = [];
+
+    public static function getInstance(): StaticUserProvider {
+        if (self::$instance === null) {
+            self::$instance = new static();
+        }
+        return self::$instance;
+    }
+
+    private function __construct() {}
+
+    private function __clone(){}
+
+    public function __wakeup() {
+        throw new Exception("Cannot unserialize Object");
+    }
 
     public function isIdExisting(string $id): bool {
         $id = trim(strtolower($id));
