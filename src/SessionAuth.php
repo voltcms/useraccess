@@ -36,10 +36,10 @@ class SessionAuth {
         }
         if (self::$instance === null) {
             self::$instance = new static();
+            self::$instance->now = time();
+            self::$instance->userProviders = $userProviders;
+            self::$instance->startSession();
         }
-        self::$instance->now = time();
-        self::$instance->userProviders = $userProviders;
-        self::$instance->startSession();
         return self::$instance;
     }
 
@@ -158,7 +158,8 @@ class SessionAuth {
         return [
             self::SESSION_LOGIN_AUTHENTICATED => $_SESSION[self::SESSION_LOGIN_AUTHENTICATED], 
             self::SESSION_LOGIN_USERNAME => $_SESSION[self::SESSION_LOGIN_USERNAME],
-            self::SESSION_LOGIN_GROUPS => $_SESSION[self::SESSION_LOGIN_GROUPS]
+            self::SESSION_LOGIN_GROUPS => $_SESSION[self::SESSION_LOGIN_GROUPS],
+            self::SESSION_LAST_REFRESH => $_SESSION[self::SESSION_LAST_REFRESH]
         ];
     }
 
