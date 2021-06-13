@@ -139,6 +139,7 @@ class SessionAuth {
         }
         if (!$result) {
             $this->setSessionInfo(false, '', [], $_SESSION[self::SESSION_LOGIN_ATTEMPTS] + 1, null);
+            http_response_code(401);
         }
         return $result;
     }
@@ -151,6 +152,7 @@ class SessionAuth {
         if (!$this->isLoggedIn()) {
             http_response_code(401);
             $this->echoJsonLoginInfo();
+            exit();
         }
     }
 
@@ -214,6 +216,7 @@ class SessionAuth {
         if (!$this->isMemberOfGroup($required_groups)) {
             http_response_code(401);
             $this->echoJsonLoginInfo();
+            exit();
         }
     }
 
