@@ -24,7 +24,7 @@ class RestApp {
         //     $login = SessionAuthenticator::login($userAccess->getUserProvider(), $attributes['username'], $attributes['password']);
         //     $response->getBody()->write(json_encode($login));
         //     $response->withHeader('Content-Type', 'application/json');
-        //     if ($login[SessionAuthenticator::SESSION_LOGIN_AUTHENTICATED]) {
+        //     if ($login[SessionAuthenticator::UA_AUTH]) {
         //         return $response->withStatus(200);
         //     } else {
         //         return $response->withStatus(401);
@@ -37,7 +37,7 @@ class RestApp {
         //     $login = SessionAuthenticator::login($userAccess->getUserProvider(), $attributes['username'], $attributes['password']);
         //     $response->getBody()->write(json_encode($login));
         //     $response->withHeader('Content-Type', 'application/json');
-        //     if ($login[SessionAuthenticator::SESSION_LOGIN_AUTHENTICATED]) {
+        //     if ($login[SessionAuthenticator::UA_AUTH]) {
         //         return $response->withStatus(200);
         //     } else {
         //         return $response->withStatus(401);

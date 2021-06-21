@@ -10,13 +10,15 @@ class SessionAuth {
 
     const HTTP_REFERER = 'HTTP_REFERER';
     const HTTP_X_CSRF_TOKEN = 'HTTP_X_CSRF_TOKEN';
-    const SESSION_LOGIN_AUTHENTICATED = 'SESSION_LOGIN_AUTHENTICATED';
-    const SESSION_LOGIN_USERNAME = 'SESSION_LOGIN_USERNAME';
-    const SESSION_LOGIN_GROUPS = 'SESSION_LOGIN_GROUPS';
-    const SESSION_LOGIN_ATTEMPTS = 'SESSION_LOGIN_ATTEMPTS';
-    const SESSION_LAST_REFRESH = 'SESSION_LAST_REFRESH';
-    const SESSION_LOGIN_CSRF_TOKEN = 'X-CSRF-Token';
-    const MAX_LOGIN_ATTEMPTS = 10;
+    const UA_AUTH = 'UA_AUTH';
+    const UA_USERNAME = 'UA_USERNAME';
+    const UA_DISPLAYNAME = 'UA_DISPLAYNAME';
+    const UA_EMAIL = 'UA_EMAIL';
+    const UA_GROUPS = 'UA_GROUPS';
+    const UA_ATTEMPTS = 'UA_ATTEMPTS';
+    const UA_REFRESH = 'UA_REFRESH';
+    const UA_CSRF = 'X-CSRF-Token';
+
     const SESSION_REFRESH_TIME = 60;
 
     // private static ?SessionAuth $instance = null;
@@ -28,18 +30,22 @@ class SessionAuth {
     private $now = 0;
     private $userProviders = null;
     private $loggedInUser = null;
+    private $maxLoginAttempts = 10;
+    private $refreshTime = 60;
 
     // public static function getInstance(array $userProviders): SessionAuth {
-    public static function getInstance($userProviders): SessionAuth {
+    public static function getInstance($userProviders, $maxLoginAttempts = 10, $refreshTime = 60): SessionAuth {
         if (empty($userProviders)) {
             throw new Exception("User Providers cannot be empty");
         }
         if (self::$instance === null) {
             self::$instance = new static();
             self::$instance->now = time();
-            self::$instance->userProviders = $userProviders;
             self::$instance->startSession();
         }
+        self::$instance->userProviders = $userProviders;
+        self::$instance->maxLoginAttempts = $maxLoginAttempts;
+        self::$instance->refreshTime = $refreshTime;
         return self::$instance;
     }
 
@@ -61,40 +67,46 @@ class SessionAuth {
             session_start();
         }
         if (session_status() === PHP_SESSION_ACTIVE) {
-            if (!array_key_exists(self::SESSION_LOGIN_AUTHENTICATED, $_SESSION)) {
-                $_SESSION[self::SESSION_LOGIN_AUTHENTICATED] = false;
+            if (!array_key_exists(self::UA_AUTH, $_SESSION)) {
+                $_SESSION[self::UA_AUTH] = false;
             }
-            if (!array_key_exists(self::SESSION_LOGIN_USERNAME, $_SESSION)) {
-                $_SESSION[self::SESSION_LOGIN_USERNAME] = '';
+            if (!array_key_exists(self::UA_USERNAME, $_SESSION)) {
+                $_SESSION[self::UA_USERNAME] = '';
             }
-            if (!array_key_exists(self::SESSION_LOGIN_GROUPS, $_SESSION)) {
-                $_SESSION[self::SESSION_LOGIN_GROUPS] = [];
+            if (!array_key_exists(self::UA_DISPLAYNAME, $_SESSION)) {
+                $_SESSION[self::UA_DISPLAYNAME] = '';
             }
-            if (!array_key_exists(self::SESSION_LOGIN_ATTEMPTS, $_SESSION)) {
-                $_SESSION[self::SESSION_LOGIN_ATTEMPTS] = 0;
+            if (!array_key_exists(self::UA_EMAIL, $_SESSION)) {
+                $_SESSION[self::UA_EMAIL] = '';
             }
-            if (!array_key_exists(self::SESSION_LOGIN_CSRF_TOKEN, $_SESSION)) {
+            if (!array_key_exists(self::UA_GROUPS, $_SESSION)) {
+                $_SESSION[self::UA_GROUPS] = [];
+            }
+            if (!array_key_exists(self::UA_ATTEMPTS, $_SESSION)) {
+                $_SESSION[self::UA_ATTEMPTS] = 0;
+            }
+            if (!array_key_exists(self::UA_CSRF, $_SESSION)) {
                 if (function_exists('random_bytes')) {
-                    $_SESSION[self::SESSION_LOGIN_CSRF_TOKEN] = bin2hex(random_bytes(32));
+                    $_SESSION[self::UA_CSRF] = bin2hex(random_bytes(32));
                 } else {
-                    $_SESSION[self::SESSION_LOGIN_CSRF_TOKEN] = bin2hex(rand());
+                    $_SESSION[self::UA_CSRF] = bin2hex(rand());
                 }
             }
             if (array_key_exists(self::HTTP_X_CSRF_TOKEN, $_SERVER) && $_SERVER[self::HTTP_X_CSRF_TOKEN] === 'fetch') {
-                $this->setHeader(self::SESSION_LOGIN_CSRF_TOKEN, $_SESSION[self::SESSION_LOGIN_CSRF_TOKEN]);
+                $this->setHeader(self::UA_CSRF, $_SESSION[self::UA_CSRF]);
             }
-            if (!array_key_exists(self::SESSION_LAST_REFRESH, $_SESSION)) {
-                $_SESSION[self::SESSION_LAST_REFRESH] = 0;
+            if (!array_key_exists(self::UA_REFRESH, $_SESSION)) {
+                $_SESSION[self::UA_REFRESH] = 0;
             }
 
             // refresh logged in user if last refresh time is too old
-            if ($_SESSION[self::SESSION_LOGIN_AUTHENTICATED] === true && 
-                $_SESSION[self::SESSION_LAST_REFRESH] < self::$instance->now - self::SESSION_REFRESH_TIME) {
-                $user = self::$instance->getUser($_SESSION[self::SESSION_LOGIN_USERNAME]);
+            if ($_SESSION[self::UA_AUTH] === true && 
+                $_SESSION[self::UA_REFRESH] < self::$instance->now - self::$instance->refreshTime) {
+                $user = self::$instance->getUser($_SESSION[self::UA_USERNAME]);
                 if ($user !== null && $user->isActive()) {
-                    self::$instance->setSessionInfo(true, $user->getUserName(), $user->getGroups(), 0, $user);
+                    self::$instance->setSessionInfo($user, 0);
                 } else {
-                    self::$instance->setSessionInfo(false, '', [] , 0, null);
+                    self::$instance->setSessionInfo(null, 0);
                 }
             }
         }
@@ -115,12 +127,22 @@ class SessionAuth {
         return null;
     }
 
-    private function setSessionInfo(bool $isLoggedIn, string $userName, array $groups, int $loginAttempts, ?User $user) {
-        $_SESSION[self::SESSION_LOGIN_AUTHENTICATED] = $isLoggedIn;
-        $_SESSION[self::SESSION_LOGIN_USERNAME] = $userName;
-        $_SESSION[self::SESSION_LOGIN_GROUPS] = $groups;
-        $_SESSION[self::SESSION_LOGIN_ATTEMPTS] = $loginAttempts;
-        $_SESSION[self::SESSION_LAST_REFRESH] = self::$instance->now;
+    private function setSessionInfo(?User $user, int $loginAttempts) {
+        if ($user !== null) {
+            $_SESSION[self::UA_AUTH] = true;
+            $_SESSION[self::UA_USERNAME] = $user->getUserName();
+            $_SESSION[self::UA_DISPLAYNAME] = $user->getDisplayName();
+            $_SESSION[self::UA_EMAIL] = $user->getEmail();
+            $_SESSION[self::UA_GROUPS] = $user->getGroups();
+        } else {
+            $_SESSION[self::UA_AUTH] = false;
+            $_SESSION[self::UA_USERNAME] = '';
+            $_SESSION[self::UA_DISPLAYNAME] = '';
+            $_SESSION[self::UA_EMAIL] = '';
+            $_SESSION[self::UA_GROUPS] = [];
+        }
+        $_SESSION[self::UA_ATTEMPTS] = $loginAttempts;
+        $_SESSION[self::UA_REFRESH] = self::$instance->now;
         self::$instance->loggedInUser = $user;
     }
 
@@ -130,22 +152,22 @@ class SessionAuth {
         $password = trim($password);
         if (!empty($userName) && !empty($password)) {
             $user = $this->getUser($userName);
-            if ($user !== null && $user->isActive() && $_SESSION[self::SESSION_LOGIN_ATTEMPTS] < self::MAX_LOGIN_ATTEMPTS + 1) {
+            if ($user !== null && $user->isActive() && $_SESSION[self::UA_ATTEMPTS] < $this->maxLoginAttempts + 1) {
                 if ($user->verifyPassword($password)){
-                    $this->setSessionInfo(true, $user->getUserName(), $user->getGroups(), 0, $user);
+                    $this->setSessionInfo($user, 0);
                     $result = true;
                 }
             }
         }
         if (!$result) {
-            $this->setSessionInfo(false, '', [], $_SESSION[self::SESSION_LOGIN_ATTEMPTS] + 1, null);
+            $this->setSessionInfo(null, $_SESSION[self::UA_ATTEMPTS] + 1);
             http_response_code(401);
         }
         return $result;
     }
 
     public function isLoggedIn(): bool {
-        return $_SESSION[self::SESSION_LOGIN_AUTHENTICATED];
+        return $_SESSION[self::UA_AUTH];
     }
 
     public function enforceLoggedIn(): void {
@@ -158,10 +180,10 @@ class SessionAuth {
 
     public function getLoginInfo(): array {
         return [
-            self::SESSION_LOGIN_AUTHENTICATED => $_SESSION[self::SESSION_LOGIN_AUTHENTICATED], 
-            self::SESSION_LOGIN_USERNAME => $_SESSION[self::SESSION_LOGIN_USERNAME],
-            self::SESSION_LOGIN_GROUPS => $_SESSION[self::SESSION_LOGIN_GROUPS],
-            self::SESSION_LAST_REFRESH => $_SESSION[self::SESSION_LAST_REFRESH]
+            self::UA_AUTH => $_SESSION[self::UA_AUTH], 
+            self::UA_USERNAME => $_SESSION[self::UA_USERNAME],
+            self::UA_GROUPS => $_SESSION[self::UA_GROUPS],
+            self::UA_REFRESH => $_SESSION[self::UA_REFRESH]
         ];
     }
 
@@ -182,7 +204,7 @@ class SessionAuth {
 
     public function logout() {
         if ($this->isLoggedIn()) {
-            $this->setSessionInfo(false, '', [] , 0, null);
+            $this->setSessionInfo(null, 0);
         }
     }
 
@@ -195,7 +217,7 @@ class SessionAuth {
             if ($this->loggedInUser !== null) {
                 return $this->loggedInUser;
             } else {
-                $this->getUser($_SESSION[self::SESSION_LOGIN_USERNAME]);
+                $this->getUser($_SESSION[self::UA_USERNAME]);
             }
         } else {
             return null;
@@ -204,7 +226,7 @@ class SessionAuth {
 
     public function isMemberOfGroup($required_groups) {
         $required_groups = Sanitizer::sanitizeStringToArray($required_groups);
-        if (!empty($required_groups[0]) && empty(array_intersect($required_groups, $_SESSION[self::SESSION_LOGIN_GROUPS]))) {
+        if (!empty($required_groups[0]) && empty(array_intersect($required_groups, $_SESSION[self::UA_GROUPS]))) {
             return false;
         } else {
             return true;
