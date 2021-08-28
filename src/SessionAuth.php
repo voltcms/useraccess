@@ -41,11 +41,11 @@ class SessionAuth {
         if (self::$instance === null) {
             self::$instance = new static();
             self::$instance->now = time();
+            self::$instance->userProviders = $userProviders;
+            self::$instance->maxLoginAttempts = $maxLoginAttempts;
+            self::$instance->refreshTime = $refreshTime;
             self::$instance->startSession();
         }
-        self::$instance->userProviders = $userProviders;
-        self::$instance->maxLoginAttempts = $maxLoginAttempts;
-        self::$instance->refreshTime = $refreshTime;
         return self::$instance;
     }
 

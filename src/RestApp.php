@@ -13,7 +13,7 @@ class RestApp {
 
         $this->router = new \Bramus\Router\Router();
         if (!empty($basePath)) {
-            $router->setBasePath($basePath);
+            $this->router->setBasePath($basePath);
         }
         $this->userProvider = $userProvider;
 
