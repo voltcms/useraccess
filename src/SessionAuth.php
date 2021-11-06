@@ -146,7 +146,7 @@ class SessionAuth {
         self::$instance->loggedInUser = $user;
     }
 
-    public function login(string $userName, string $password): bool {
+    public function login(string $userName, string $password, string $csrf_token = null): bool {
         $result = false;
         $userName = trim(strtolower($userName));
         $password = trim($password);
@@ -154,8 +154,10 @@ class SessionAuth {
             $user = $this->getUser($userName);
             if ($user !== null && $user->isActive() && $_SESSION[self::UA_ATTEMPTS] < $this->maxLoginAttempts + 1) {
                 if ($user->verifyPassword($password)){
-                    $this->setSessionInfo($user, 0);
-                    $result = true;
+                    if (empty($csrf_token) || hash_equals($_SESSION[self::UA_CSRF], $csrf_token)) {
+                        $this->setSessionInfo($user, 0);
+                        $result = true;
+                    }
                 }
             }
         }
