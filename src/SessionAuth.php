@@ -196,8 +196,8 @@ class SessionAuth {
     }
 
     public function setCsrfTokenHeader(): void {
-        if (!array_key_exists(HTTP_X_CSRF_TOKEN, $_SESSION)) {
-            $_SESSION[HTTP_X_CSRF_TOKEN] = bin2hex(random_bytes(32));;
+        if (!array_key_exists(self::HTTP_X_CSRF_TOKEN, $_SESSION)) {
+            $_SESSION[self::HTTP_X_CSRF_TOKEN] = bin2hex(random_bytes(32));;
         }
         if (array_key_exists(self::HTTP_X_CSRF_TOKEN, $_SERVER) && $_SERVER[self::HTTP_X_CSRF_TOKEN] === 'fetch') {
             $this->setHeader(self::HTTP_X_CSRF_TOKEN, $_SESSION[self::HTTP_X_CSRF_TOKEN]);

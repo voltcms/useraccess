@@ -11,6 +11,7 @@
     ],
     "type": "project",
     "require": {
+        "php": "^8",
         "pragmaphp/uuid": "^1",
         "pragmaphp/filedb": "^1",
         "bramus/router": "^1"
