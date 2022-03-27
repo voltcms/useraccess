@@ -2,6 +2,8 @@
 
 namespace PragmaPHP\UserAccess;
 
+use \Exception;
+
 class StaticUserProvider implements UserProviderInterface {
 
     private static $instance = null;
@@ -41,13 +43,13 @@ class StaticUserProvider implements UserProviderInterface {
         if ($this->isIdExisting($userName)) {
             return $this->entries[$userName];
         } else {
-            throw new \Exception('EXCEPTION_USER_NOT_EXIST');
+            throw new Exception('EXCEPTION_USER_NOT_EXIST');
         }
     }
 
     public function createUser(User $user): User {
         if ($this->isUserNameExisting($user->getUserName())) {
-            throw new \Exception('EXCEPTION_USER_ALREADY_EXIST');
+            throw new Exception('EXCEPTION_USER_ALREADY_EXIST');
         } else {
             $user->setId($user->getUserName());
             $this->entries[$user->getId()] = $user;
@@ -86,7 +88,7 @@ class StaticUserProvider implements UserProviderInterface {
             $this->entries[$user->getId()] = $user;
             return $user;
         } else {
-            throw new \Exception('EXCEPTION_USER_NOT_EXIST');
+            throw new Exception('EXCEPTION_USER_NOT_EXIST');
         }
     }
 
@@ -95,7 +97,7 @@ class StaticUserProvider implements UserProviderInterface {
         if ($this->isIdExisting($id)) {
             unset($this->entries[$id]);
         } else {
-            throw new \Exception('EXCEPTION_USER_NOT_EXIST');
+            throw new Exception('EXCEPTION_USER_NOT_EXIST');
         }
     }
 

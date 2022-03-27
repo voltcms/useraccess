@@ -67,15 +67,15 @@ class RestApp {
     //         $userAccess = $this->get('userAccess');
     //         $attributes = filter_var_array($request->getParsedBody(), FILTER_SANITIZE_STRING);
     //         if (!array_key_exists('userName', $attributes)) {
-    //             throw new \Exception(UserAccess::EXCEPTION_INVALID_UNIQUE_NAME);
+    //             throw new Exception(UserAccess::EXCEPTION_INVALID_UNIQUE_NAME);
     //         }
     //         if ($userAccess->getUserProvider()->isUniqueNameExisting($attributes['userName'])) {
-    //             throw new \Exception(UserAccess::EXCEPTION_ENTRY_ALREADY_EXIST);
+    //             throw new Exception(UserAccess::EXCEPTION_ENTRY_ALREADY_EXIST);
     //         }
     //         if (!empty($attributes['email'])) {
     //             $find = $userAccess->getUserProvider()->findUsers('email', $attributes['email']);
     //             if (!empty($find)) {
-    //                 throw new \Exception(UserAccess::EXCEPTION_DUPLICATE_EMAIL);
+    //                 throw new Exception(UserAccess::EXCEPTION_DUPLICATE_EMAIL);
     //             }
     //         }
     //         $entry = new User($attributes['userName']);
@@ -94,7 +94,7 @@ class RestApp {
     //             if (strcasecmp($email, $entry->getEmail()) != 0) {
     //                 $find = $userAccess->getUserProvider()->findUsers('email', $email);
     //                 if (!empty($find)) {
-    //                     throw new \Exception(UserAccess::EXCEPTION_DUPLICATE_EMAIL);
+    //                     throw new Exception(UserAccess::EXCEPTION_DUPLICATE_EMAIL);
     //                 }
     //             }
     //         }

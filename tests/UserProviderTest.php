@@ -85,7 +85,7 @@ class UserProviderTest extends TestCase {
         $this->assertFalse($provider->isUserNameExisting('userid3'));
         try {
             $provider->getUser('userid3');
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $this->assertNotEmpty($e);
         }
 

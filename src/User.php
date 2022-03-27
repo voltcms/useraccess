@@ -2,6 +2,7 @@
 
 namespace PragmaPHP\UserAccess;
 
+use \Exception;
 use \PragmaPHP\UserAccess\Sanitizer;
 
 // https://tools.ietf.org/html/rfc7643#section-8
@@ -54,7 +55,7 @@ class User {
     public function setId(string $id) {
         $id = Sanitizer::sanitizeString($id);
         if(!preg_match(self::REGEX, $id) || strlen($id) > 32){
-            throw new \Exception('EXCEPTION_INVALID_USER_NAME');
+            throw new Exception('EXCEPTION_INVALID_USER_NAME');
         }
         $this->id = $id;
     }
@@ -65,7 +66,7 @@ class User {
     public function setUserName(string $userName) {
         $userName = Sanitizer::sanitizeString($userName);
         if(!preg_match(self::REGEX, $userName) || strlen($userName) > 32){
-            throw new \Exception('EXCEPTION_INVALID_USER_NAME');
+            throw new Exception('EXCEPTION_INVALID_USER_NAME');
         }
         $this->userName = $userName;
     }
@@ -83,7 +84,7 @@ class User {
     public function setEmail(string $email) {
         $email = trim(strtolower($email));
         if (!empty($email) && !filter_var(trim($email), FILTER_VALIDATE_EMAIL)) {
-            throw new \Exception('EXCEPTION_INVALID_EMAIL');
+            throw new Exception('EXCEPTION_INVALID_EMAIL');
         }
         $this->email = $email;
     }
@@ -114,7 +115,7 @@ class User {
     }
     public static function hashPassword(string $password) : string {
         if (empty($password)) {
-            throw new \Exception('EXCEPTION_INVALID_PASSWORD');
+            throw new Exception('EXCEPTION_INVALID_PASSWORD');
         }
         return \password_hash($password, PASSWORD_DEFAULT);
     }

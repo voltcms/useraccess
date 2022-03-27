@@ -2,6 +2,7 @@
 
 namespace PragmaPHP\UserAccess;
 
+use \Exception;
 use \PragmaPHP\FileDB\FileDB;
 
 class FileUserProvider implements UserProviderInterface {
@@ -26,13 +27,13 @@ class FileUserProvider implements UserProviderInterface {
         if ($this->isIdExisting($id)) {
             return $this->documentToEntry($this->db->read($id)[0]);
         } else {
-            throw new \Exception('EXCEPTION_USER_NOT_EXIST');
+            throw new Exception('EXCEPTION_USER_NOT_EXIST');
         }
     }
 
     public function createUser(User $user): User {
         if ($this->isUserNameExisting($user->getUserName())) {
-            throw new \Exception('EXCEPTION_USER_ALREADY_EXIST');
+            throw new Exception('EXCEPTION_USER_ALREADY_EXIST');
         } else {
             $user->setId($user->getUserName());
             $id = $this->db->create($user->getAttributes(), $user->getUserName());
@@ -59,7 +60,7 @@ class FileUserProvider implements UserProviderInterface {
             $this->db->update($user->getUserName(), $user->getAttributes());
             return $user;
         } else {
-            throw new \Exception('EXCEPTION_USER_NOT_EXIST');
+            throw new Exception('EXCEPTION_USER_NOT_EXIST');
         }
     }
 
@@ -68,7 +69,7 @@ class FileUserProvider implements UserProviderInterface {
         if ($this->isIdExisting($id)) {
             $this->db->delete($id);
         } else {
-            throw new \Exception('EXCEPTION_USER_NOT_EXIST');
+            throw new Exception('EXCEPTION_USER_NOT_EXIST');
         }
     }
 

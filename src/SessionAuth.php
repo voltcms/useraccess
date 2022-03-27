@@ -2,7 +2,7 @@
 
 namespace PragmaPHP\UserAccess;
 
-use Exception;
+use \Exception;
 use \PragmaPHP\UserAccess\User;
 use \PragmaPHP\UserAccess\Sanitizer;
 
