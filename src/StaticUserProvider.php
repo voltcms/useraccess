@@ -10,7 +10,7 @@ class StaticUserProvider implements UserProviderInterface {
 
     private $entries = [];
 
-    public static function getInstance(): StaticUserProvider {
+    public static function getInstance(array $config = null): static {
         if (self::$instance === null) {
             self::$instance = new static();
         }

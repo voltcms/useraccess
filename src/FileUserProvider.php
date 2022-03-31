@@ -7,15 +7,33 @@ use \PragmaPHP\FileDB\FileDB;
 
 class FileUserProvider implements UserProviderInterface {
 
-    protected $db;
+    private static $instance = null;
+    private static $db;
 
-    public function __construct(string $directory = 'data') {
-        $this->db = new FileDB($directory);
+    public static function getInstance(?array $config): static {
+        if (self::$instance === null) {
+            if (empty($config) || empty($config['directory'])) {
+                $directory = 'data';
+            } else {
+                $directory = $config['directory'];
+            }
+            self::$instance = new static();
+            self::$db = new FileDB($directory);
+        }
+        return self::$instance;
+    }
+
+    private function __construct() {}
+
+    private function __clone(){}
+
+    public function __wakeup() {
+        throw new Exception("Cannot unserialize Object");
     }
 
     public function isIdExisting(string $id): bool {
         $id = trim(strtolower($id));
-        return !empty($this->db->read($id));
+        return !empty(self::$db->read($id));
     }
 
     public function isUserNameExisting(string $userName): bool {
@@ -25,7 +43,7 @@ class FileUserProvider implements UserProviderInterface {
     public function getUser(string $userName): User {
         $id = trim(strtolower($userName));
         if ($this->isIdExisting($id)) {
-            return $this->documentToEntry($this->db->read($id)[0]);
+            return $this->documentToEntry(self::$db->read($id)[0]);
         } else {
             throw new Exception('EXCEPTION_USER_NOT_EXIST');
         }
@@ -36,20 +54,20 @@ class FileUserProvider implements UserProviderInterface {
             throw new Exception('EXCEPTION_USER_ALREADY_EXIST');
         } else {
             $user->setId($user->getUserName());
-            $id = $this->db->create($user->getAttributes(), $user->getUserName());
+            $id = self::$db->create($user->getAttributes(), $user->getUserName());
             return $user;
         }
     }
 
     public function getUsers(): array {
-        $items = $this->db->readAll();
+        $items = self::$db->readAll();
         return $this->documentsToEntries($items);
     }
 
     public function findUsers(string $attributeName, string $attributeValue): array {
         $search_key = trim($attributeName);
         $search_value = trim($attributeValue);
-        $items = $this->db->read(null, [
+        $items = self::$db->read(null, [
             $attributeName => $attributeValue
         ]);
         return $this->documentsToEntries($items);
@@ -57,7 +75,7 @@ class FileUserProvider implements UserProviderInterface {
 
     public function updateUser(User $user): User {
         if ($this->isIdExisting($user->getUserName())) {
-            $this->db->update($user->getUserName(), $user->getAttributes());
+            self::$db->update($user->getUserName(), $user->getAttributes());
             return $user;
         } else {
             throw new Exception('EXCEPTION_USER_NOT_EXIST');
@@ -67,14 +85,14 @@ class FileUserProvider implements UserProviderInterface {
     public function deleteUser(string $id) {
         $id = trim(strtolower($id));
         if ($this->isIdExisting($id)) {
-            $this->db->delete($id);
+            self::$db->delete($id);
         } else {
             throw new Exception('EXCEPTION_USER_NOT_EXIST');
         }
     }
 
     public function deleteUsers() {
-        $this->db->deleteAll();
+        self::$db->deleteAll();
     }
 
     private function documentsToEntries(array $items): array {

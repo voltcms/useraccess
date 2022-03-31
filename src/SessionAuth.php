@@ -185,6 +185,7 @@ class SessionAuth {
             self::UA_AUTH => $_SESSION[self::UA_AUTH], 
             self::UA_USERNAME => $_SESSION[self::UA_USERNAME],
             self::UA_GROUPS => $_SESSION[self::UA_GROUPS],
+            self::UA_ATTEMPTS => $_SESSION[self::UA_ATTEMPTS],
             self::UA_REFRESH => $_SESSION[self::UA_REFRESH]
         ];
     }

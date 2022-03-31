@@ -12,7 +12,7 @@ class UserProviderTest extends TestCase {
 
     public function test() {
         //$this->performTest(StaticUserProvider::getInstance());
-        $this->performTest(new FileUserProvider('testdata/user'));
+        $this->performTest(FileUserProvider::getInstance(array('directory' => 'testdata/user')));
     }
 
     public function performTest(UserProviderInterface $provider) {
