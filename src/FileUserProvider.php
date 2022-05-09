@@ -54,7 +54,7 @@ class FileUserProvider implements UserProviderInterface {
             throw new Exception('EXCEPTION_USER_ALREADY_EXIST');
         } else {
             $user->setId($user->getUserName());
-            $id = self::$db->create($user->getAttributes(), $user->getUserName());
+            $id = self::$db->create($user->getUserName(), $user->getAttributes());
             return $user;
         }
     }
