@@ -115,13 +115,26 @@ class SessionAuth {
     private function getUser(string $userName): ?User {
         if (is_array(self::$instance->userProviders)) {
             foreach (self::$instance->userProviders as $userProvider) {
-                if ($userProvider->isUserNameExisting($userName)) {
-                    return $userProvider->getUser($userName);
+                $user = $this->findUser($userProvider, $userName);
+                if ($user) {
+                    return $user;
                 }
             }
         } else {
-            if (self::$instance->userProviders->isUserNameExisting($userName)) {
-                return self::$instance->userProviders->getUser($userName);
+            return $this->findUser(self::$instance->userProviders, $userName);
+        }
+        return null;
+    }
+
+    private function findUser(UserProviderInterface $userProvider, string $userName): ?User {
+        if (str_contains($userName, '@')) {
+            $users = $userProvider->findUsers('email', $userName);
+            if (!empty($users) && count($users) == 1) {
+                return $users[0];
+            }
+        } else {
+            if ($userProvider->isUserNameExisting($userName)) {
+                return $userProvider->getUser($userName);
             }
         }
         return null;

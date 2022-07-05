@@ -122,8 +122,9 @@ class UserProviderTest extends TestCase {
         $this->assertNotEmpty($_SESSION[SessionAuth::UA_CSRF]);
         $this->assertFalse($sessionAuth->login('userid1', 'password1_xxx'));
         $this->assertFalse($sessionAuth->login('xxxxx', 'password1_xxx'));
+        $this->assertFalse($sessionAuth->login('userid1.xxx@test.com', 'password1_update'));
         $this->assertFalse($sessionAuth->isLoggedIn());
-        $this->assertEquals($_SESSION[SessionAuth::UA_ATTEMPTS], 2);
+        $this->assertEquals($_SESSION[SessionAuth::UA_ATTEMPTS], 3);
         $this->assertFalse($_SESSION[SessionAuth::UA_AUTH]);
         $this->assertEquals($_SESSION[SessionAuth::UA_USERNAME], '');
         $this->assertTrue($_SESSION[SessionAuth::UA_GROUPS] == []);
@@ -140,6 +141,16 @@ class UserProviderTest extends TestCase {
         $this->assertFalse($_SESSION[SessionAuth::UA_AUTH]);
         $this->assertEquals($_SESSION[SessionAuth::UA_USERNAME], '');
         $this->assertTrue($_SESSION[SessionAuth::UA_GROUPS] == []);
+        $this->assertNotEmpty($sessionAuth->getLoginInfo());
+
+        $this->assertTrue($sessionAuth->login('userid1.TEST_UPDATE@test.com', 'password1_update', $_SESSION[SessionAuth::UA_CSRF]));
+        $this->assertTrue($sessionAuth->isLoggedIn());
+        $this->assertEquals($_SESSION[SessionAuth::UA_ATTEMPTS], 0);
+        $this->assertTrue($_SESSION[SessionAuth::UA_AUTH]);
+        $this->assertEquals($_SESSION[SessionAuth::UA_USERNAME], 'userid1');
+        $this->assertEquals($_SESSION[SessionAuth::UA_DISPLAYNAME], 'userid1 test');
+        $this->assertEquals($_SESSION[SessionAuth::UA_EMAIL], 'userid1.test_update@test.com');
+        $this->assertTrue($_SESSION[SessionAuth::UA_GROUPS] == ['administrators']);
         $this->assertNotEmpty($sessionAuth->getLoginInfo());
 
         // $this->assertFalse($user_test1->verifyPassword('password1'));
