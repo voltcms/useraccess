@@ -77,7 +77,13 @@ class FileUserProvider implements UserProviderInterface {
 
     public function updateUser(User $user): User {
         if ($this->isIdExisting($user->getUserName())) {
-            self::$db->update($user->getUserName(), $user->getAttributes());
+            if (!empty($user->getEmail())) {
+                $items = $this->findUsers('email', $user->getEmail());
+                if (!empty($items) && $items[0]->getUserName() != $user->getUserName()) {
+                    throw new Exception('EXCEPTION_DUPLICATE_EMAIL');
+                }
+            }
+            $this->db->update($user->getUserName(), $user->getAttributes());
             return $user;
         } else {
             throw new Exception('EXCEPTION_USER_NOT_EXIST');

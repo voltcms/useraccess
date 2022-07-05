@@ -78,6 +78,10 @@ class UserProviderTest extends TestCase {
         $find = $provider->findUsers('email', 'userid1.test@test.com');
         $this->assertNotEmpty($find);
         $this->assertEquals(1, count($find));
+        $find = $provider->findUsers('email', 'userid_2.test@test.com');
+        $this->assertNotEmpty($find);
+        $this->assertEquals(1, count($find));
+        $this->assertEquals('userid_2', $find[0]->getUserName());
         $find = $provider->findUsers('displayName', '*USERID*');
         $this->assertNotEmpty($find);
         $this->assertEquals(2, count($find));
