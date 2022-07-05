@@ -127,7 +127,7 @@ class SessionAuth {
     }
 
     private function findUser(UserProviderInterface $userProvider, string $userName): ?User {
-        if (str_contains($userName, '@')) {
+        if (strpos($userName, '@') !== false) {
             $users = $userProvider->findUsers('email', $userName);
             if (!empty($users) && count($users) == 1) {
                 return $users[0];

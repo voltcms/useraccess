@@ -83,7 +83,7 @@ class FileUserProvider implements UserProviderInterface {
                     throw new Exception('EXCEPTION_DUPLICATE_EMAIL');
                 }
             }
-            $this->db->update($user->getUserName(), $user->getAttributes());
+            self::$db->update($user->getUserName(), $user->getAttributes());
             return $user;
         } else {
             throw new Exception('EXCEPTION_USER_NOT_EXIST');
