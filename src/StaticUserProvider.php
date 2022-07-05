@@ -50,6 +50,8 @@ class StaticUserProvider implements UserProviderInterface {
     public function createUser(User $user): User {
         if ($this->isUserNameExisting($user->getUserName())) {
             throw new Exception('EXCEPTION_USER_ALREADY_EXIST');
+        } else if (!empty($user->getEmail()) && !empty($this->findUsers('email', $user->getEmail()))) {
+            throw new Exception('EXCEPTION_DUPLICATE_EMAIL');
         } else {
             $user->setId($user->getUserName());
             $this->entries[$user->getId()] = $user;
