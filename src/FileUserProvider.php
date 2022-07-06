@@ -5,12 +5,14 @@ namespace PragmaPHP\UserAccess;
 use \Exception;
 use \PragmaPHP\FileDB\FileDB;
 
-class FileUserProvider implements UserProviderInterface {
+class FileUserProvider implements UserProviderInterface
+{
 
     private static $instance = null;
     private static $db;
 
-    public static function getInstance(?array $config): static {
+    public static function getInstance(array $config = null)
+    {
         if (self::$instance === null) {
             if (empty($config) || empty($config['directory'])) {
                 $directory = 'data';
@@ -23,24 +25,30 @@ class FileUserProvider implements UserProviderInterface {
         return self::$instance;
     }
 
-    private function __construct() {}
+    private function __construct()
+    {}
 
-    private function __clone(){}
+    private function __clone()
+    {}
 
-    public function __wakeup() {
+    public function __wakeup()
+    {
         throw new Exception("Cannot unserialize Object");
     }
 
-    public function isIdExisting(string $id): bool {
+    public function isIdExisting(string $id): bool
+    {
         $id = trim(strtolower($id));
         return !empty(self::$db->read($id));
     }
 
-    public function isUserNameExisting(string $userName): bool {
+    public function isUserNameExisting(string $userName): bool
+    {
         return $this->isIdExisting($userName);
     }
 
-    public function getUser(string $userName): User {
+    public function getUser(string $userName): User
+    {
         $id = trim(strtolower($userName));
         if ($this->isIdExisting($id)) {
             return $this->documentToEntry(self::$db->read($id)[0]);
@@ -49,7 +57,8 @@ class FileUserProvider implements UserProviderInterface {
         }
     }
 
-    public function createUser(User $user): User {
+    public function createUser(User $user): User
+    {
         if ($this->isUserNameExisting($user->getUserName())) {
             throw new Exception('EXCEPTION_USER_ALREADY_EXIST');
         } else if (!empty($user->getEmail()) && !empty($this->findUsers('email', $user->getEmail()))) {
@@ -61,21 +70,24 @@ class FileUserProvider implements UserProviderInterface {
         }
     }
 
-    public function getUsers(): array {
+    public function getUsers(): array
+    {
         $items = self::$db->readAll();
         return $this->documentsToEntries($items);
     }
 
-    public function findUsers(string $attributeName, string $attributeValue): array {
+    public function findUsers(string $attributeName, string $attributeValue): array
+    {
         $search_key = trim($attributeName);
         $search_value = trim($attributeValue);
         $items = self::$db->read(null, [
-            $attributeName => $attributeValue
+            $attributeName => $attributeValue,
         ]);
         return $this->documentsToEntries($items);
     }
 
-    public function updateUser(User $user): User {
+    public function updateUser(User $user): User
+    {
         if ($this->isIdExisting($user->getUserName())) {
             if (!empty($user->getEmail())) {
                 $items = $this->findUsers('email', $user->getEmail());
@@ -90,7 +102,8 @@ class FileUserProvider implements UserProviderInterface {
         }
     }
 
-    public function deleteUser(string $id) {
+    public function deleteUser(string $id)
+    {
         $id = trim(strtolower($id));
         if ($this->isIdExisting($id)) {
             self::$db->delete($id);
@@ -99,19 +112,22 @@ class FileUserProvider implements UserProviderInterface {
         }
     }
 
-    public function deleteUsers() {
+    public function deleteUsers()
+    {
         self::$db->deleteAll();
     }
 
-    private function documentsToEntries(array $items): array {
+    private function documentsToEntries(array $items): array
+    {
         $result = [];
-        foreach($items as $item){
+        foreach ($items as $item) {
             $result[] = $this->documentToEntry($item);
         }
         return $result;
     }
 
-    private function documentToEntry(array $attributes): User {
+    private function documentToEntry(array $attributes): User
+    {
         $user = new User();
         $user->setAttributes($attributes);
         return $user;

@@ -1,21 +1,23 @@
 <?php
 
 use \PHPUnit\Framework\TestCase;
-
 use \PragmaPHP\UserAccess\FileUserProvider;
 use \PragmaPHP\UserAccess\StaticUserProvider;
+use \PragmaPHP\UserAccess\SessionAuth;
 use \PragmaPHP\UserAccess\User;
 use \PragmaPHP\UserAccess\UserProviderInterface;
-use \PragmaPHP\UserAccess\SessionAuth;
 
-class UserProviderTest extends TestCase {
+class UserProviderTest extends TestCase
+{
 
-    public function test() {
+    public function test()
+    {
         //$this->performTest(StaticUserProvider::getInstance());
         $this->performTest(FileUserProvider::getInstance(array('directory' => 'testdata/user')));
     }
 
-    public function performTest(UserProviderInterface $provider) {
+    public function performTest(UserProviderInterface $provider)
+    {
         $provider->deleteUsers();
         if ($provider->isUserNameExisting('userid1')) {
             $provider->deleteUser('userid1');

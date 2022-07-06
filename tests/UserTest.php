@@ -1,12 +1,13 @@
 <?php
 
 use \PHPUnit\Framework\TestCase;
-
 use \PragmaPHP\UserAccess\User;
 
-class UserTest extends TestCase {
+class UserTest extends TestCase
+{
 
-    public function test() {
+    public function test()
+    {
         $user = new User();
         $user->setId('userid1');
         $user->setUserName('userid1');

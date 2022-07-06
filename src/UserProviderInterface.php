@@ -2,9 +2,10 @@
 
 namespace PragmaPHP\UserAccess;
 
-interface UserProviderInterface {
+interface UserProviderInterface
+{
 
-    public static function getInstance(array $config): static;
+    public static function getInstance(array $config = null);
 
     public function isIdExisting(string $id): bool;
 

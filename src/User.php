@@ -7,7 +7,8 @@ use \PragmaPHP\UserAccess\Sanitizer;
 
 // https://tools.ietf.org/html/rfc7643#section-8
 
-class User {
+class User
+{
 
     const REGEX = '/^[a-z0-9_\-]{1,32}/';
 
@@ -49,114 +50,140 @@ class User {
 
     //////////////////////////////////////////////////
 
-    public function getId(): string {
+    public function getId(): string
+    {
         return $this->id;
     }
-    public function setId(string $id) {
+    public function setId(string $id)
+    {
         $id = Sanitizer::sanitizeString($id);
-        if(!preg_match(self::REGEX, $id) || strlen($id) > 32){
+        if (!preg_match(self::REGEX, $id) || strlen($id) > 32) {
             throw new Exception('EXCEPTION_INVALID_USER_NAME');
         }
         $this->id = $id;
     }
 
-    public function getUserName(): string {
+    public function getUserName(): string
+    {
         return $this->userName;
     }
-    public function setUserName(string $userName) {
+    public function setUserName(string $userName)
+    {
         $userName = Sanitizer::sanitizeString($userName);
-        if(!preg_match(self::REGEX, $userName) || strlen($userName) > 32){
+        if (!preg_match(self::REGEX, $userName) || strlen($userName) > 32) {
             throw new Exception('EXCEPTION_INVALID_USER_NAME');
         }
         $this->userName = $userName;
     }
 
-    public function getDisplayName(): string {
+    public function getDisplayName(): string
+    {
         return $this->displayName;
     }
-    public function setDisplayName(string $displayName) {
+    public function setDisplayName(string $displayName)
+    {
         $this->displayName = trim($displayName);
     }
 
-    public function getEmail(): string {
+    public function getEmail(): string
+    {
         return $this->email;
     }
-    public function setEmail(string $email) {
+    public function setEmail(string $email)
+    {
         $email = trim(strtolower($email));
         if (!empty($email) && !filter_var(trim($email), FILTER_VALIDATE_EMAIL)) {
             throw new Exception('EXCEPTION_INVALID_EMAIL');
         }
         $this->email = $email;
     }
-    public function getEmails(): array {
+    public function getEmails(): array
+    {
         return [$this->getEmail()];
     }
-    public function setEmails(array $emails) {
+    public function setEmails(array $emails)
+    {
         if (!empty($emails)) {
             $this->setEmail(current($emails));
         }
     }
 
-    public function getActive(): bool {
+    public function getActive(): bool
+    {
         return $this->active;
     }
-    public function isActive(): bool {
+    public function isActive(): bool
+    {
         return $this->active;
     }
-    public function setActive(bool $active) {
+    public function setActive(bool $active)
+    {
         $this->active = $active;
     }
 
-    public function setPassword(string $password) {
+    public function setPassword(string $password)
+    {
         $this->passwordHash = self::hashPassword(trim($password));
     }
-    public function setPasswordHash(string $passwordHash) {
+    public function setPasswordHash(string $passwordHash)
+    {
         $this->passwordHash = trim($passwordHash);
     }
-    public static function hashPassword(string $password) : string {
+    public static function hashPassword(string $password): string
+    {
         if (empty($password)) {
             throw new Exception('EXCEPTION_INVALID_PASSWORD');
         }
         return \password_hash($password, PASSWORD_DEFAULT);
     }
-    public function verifyPassword(string $password): bool {
+    public function verifyPassword(string $password): bool
+    {
         return \password_verify(trim($password), $this->passwordHash);
     }
 
-    public function getGroups(): array {
+    public function getGroups(): array
+    {
         return $this->groups;
     }
-    public function addGroups(array $groups) {
+    public function addGroups(array $groups)
+    {
         foreach ($groups as $group) {
             $this->addGroup($group);
         }
     }
-    public function setGroups(array $groups) {
+    public function setGroups(array $groups)
+    {
         $this->groups = Sanitizer::sanitizeArray($groups);
     }
-    public function hasGroup(string $group) : bool {
+    public function hasGroup(string $group): bool
+    {
         return in_array(Sanitizer::sanitizeString($group), $this->groups);
     }
-    public function addGroup(string $group) {
+    public function addGroup(string $group)
+    {
         $group = Sanitizer::sanitizeString($group);
         if ($group !== '' && !in_array($group, $this->groups)) {
             $this->groups[] = $group;
         }
     }
-    public function removeGroup(string $group) {
+    public function removeGroup(string $group)
+    {
         if (($key = array_search(Sanitizer::sanitizeString($group), $this->groups)) !== false) {
             unset($this->groups[$key]);
         }
     }
 
-    public function getLoginAttempts(): int {
+    public function getLoginAttempts(): int
+    {
         return $this->loginAttempts;
     }
-    public function setLoginAttempts(int $loginAttempts) {
+    public function setLoginAttempts(int $loginAttempts)
+    {
         $this->loginAttempts = $loginAttempts;
     }
 
-    public function getAttributes(): array {
+    public function getAttributes(): array
+    {
         $attributes = [];
         $attributes['schemas'] = $this->schemas;
         $attributes['id'] = $this->id;
@@ -170,11 +197,13 @@ class User {
         return $attributes;
     }
 
-    public function toJson(): string {
+    public function toJson(): string
+    {
         return json_encode($this->getAttributes());
     }
 
-    public function setAttributes(array $attributes) {
+    public function setAttributes(array $attributes)
+    {
         if (array_key_exists('id', $attributes)) {
             $this->setId($attributes['id']);
         }

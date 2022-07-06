@@ -1,15 +1,11 @@
 <?php
 
 use \PHPUnit\Framework\TestCase;
-
-use \Bramus\Router\Router;
-
-use \PragmaPHP\UserAccess;
-use \PragmaPHP\UserAccess\User;
 use \PragmaPHP\UserAccess\FileUserProvider;
 use \PragmaPHP\UserAccess\RestApp;
 
-class RestAppTest extends TestCase {
+class RestAppTest extends TestCase
+{
 
     private $app;
     private $userName = 'restu1';
@@ -19,7 +15,8 @@ class RestAppTest extends TestCase {
     private $roleName = 'restg1';
     private $roleId = '';
 
-    public function setUp(): void {
+    public function setUp(): void
+    {
         $userProvider = FileUserProvider::getInstance(array('directory' => 'testdata/user'));
         $this->app = new RestApp($userProvider);
 
@@ -27,7 +24,8 @@ class RestAppTest extends TestCase {
         $_SERVER['SERVER_PROTOCOL'] = 'HTTP/1.1';
     }
 
-    public function test_01_GetEmptyUsers() {
+    public function test_01_GetEmptyUsers()
+    {
         $_SERVER['REQUEST_METHOD'] = 'GET';
         $_SERVER['REQUEST_URI'] = '/v1/Users';
         ob_start();
@@ -76,8 +74,6 @@ class RestAppTest extends TestCase {
     //     ob_end_clean();
     // }
 
-
-
     // public function test111_GetUser() {
     //     $id = $this->getEntryId(UserInterface::TYPE);
     //     $req = $this->createRequest('GET', '/v1/Users/' . $id);
@@ -95,10 +91,6 @@ class RestAppTest extends TestCase {
     //     $response = $this->app->getApp()->handle($req);
     //     $this->assertSame($response->getStatusCode(), 200);
     // }
-
-
-
-
 
     // public function test115_DeleteUser() {
     //     $id = $this->getEntryId(UserInterface::TYPE);
