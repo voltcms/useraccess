@@ -4,4 +4,4 @@ composer.phar
 /data/
 /testdata/
 .DS_Store
-.phpunit.result.cache
+/.phpunit.cache

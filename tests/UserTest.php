@@ -1,7 +1,7 @@
 <?php
 
 use \PHPUnit\Framework\TestCase;
-use \PragmaPHP\UserAccess\User;
+use \VoltCMS\UserAccess\User;
 
 class UserTest extends TestCase
 {

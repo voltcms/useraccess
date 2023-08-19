@@ -1,9 +1,9 @@
 <?php
 
-namespace PragmaPHP\UserAccess;
+namespace VoltCMS\UserAccess;
 
 use \Exception;
-use \PragmaPHP\FileDB\FileDB;
+use \VoltCMS\FileDB\FileDB;
 
 class FileUserProvider implements UserProviderInterface
 {

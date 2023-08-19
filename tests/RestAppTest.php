@@ -1,8 +1,8 @@
 <?php
 
 use \PHPUnit\Framework\TestCase;
-use \PragmaPHP\UserAccess\FileUserProvider;
-use \PragmaPHP\UserAccess\RestApp;
+use \VoltCMS\UserAccess\FileUserProvider;
+use \VoltCMS\UserAccess\RestApp;
 
 class RestAppTest extends TestCase
 {

@@ -1,9 +1,9 @@
 <?php
 
-namespace PragmaPHP\UserAccess;
+namespace VoltCMS\UserAccess;
 
 use \Exception;
-use \PragmaPHP\UserAccess\Sanitizer;
+use \VoltCMS\UserAccess\Sanitizer;
 
 // https://tools.ietf.org/html/rfc7643#section-8
 

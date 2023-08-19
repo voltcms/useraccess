@@ -4,9 +4,9 @@ session_start();
 
 require '../../vendor/autoload.php';
 
-use \PragmaPHP\UserAccess\User;
-use \PragmaPHP\UserAccess\FileUserProvider;
-use \PragmaPHP\UserAccess\RestApp;
+use \VoltCMS\UserAccess\User;
+use \VoltCMS\UserAccess\FileUserProvider;
+use \VoltCMS\UserAccess\RestApp;
 
 $userProvider = new FileUserProvider('../../testdata/user');
 

@@ -1,6 +1,6 @@
 <?php
 
-namespace PragmaPHP\UserAccess;
+namespace VoltCMS\UserAccess;
 
 use \Exception;
 

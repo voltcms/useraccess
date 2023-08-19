@@ -1,10 +1,10 @@
 <?php
 
-namespace PragmaPHP\UserAccess;
+namespace VoltCMS\UserAccess;
 
 use \Exception;
-use \PragmaPHP\UserAccess\Sanitizer;
-use \PragmaPHP\UserAccess\User;
+use \VoltCMS\UserAccess\Sanitizer;
+use \VoltCMS\UserAccess\User;
 
 class SessionAuth
 {

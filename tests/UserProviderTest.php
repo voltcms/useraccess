@@ -1,11 +1,11 @@
 <?php
 
 use \PHPUnit\Framework\TestCase;
-use \PragmaPHP\UserAccess\FileUserProvider;
-use \PragmaPHP\UserAccess\StaticUserProvider;
-use \PragmaPHP\UserAccess\SessionAuth;
-use \PragmaPHP\UserAccess\User;
-use \PragmaPHP\UserAccess\UserProviderInterface;
+use \VoltCMS\UserAccess\FileUserProvider;
+use \VoltCMS\UserAccess\StaticUserProvider;
+use \VoltCMS\UserAccess\SessionAuth;
+use \VoltCMS\UserAccess\User;
+use \VoltCMS\UserAccess\UserProviderInterface;
 
 class UserProviderTest extends TestCase
 {
