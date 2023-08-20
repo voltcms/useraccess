@@ -18,15 +18,15 @@ class UserProviderTest extends TestCase
 
     public function performTest(UserProviderInterface $provider)
     {
-        $provider->deleteUsers();
-        if ($provider->isUserNameExisting('userid1')) {
-            $provider->deleteUser('userid1');
+        $provider->deleteAll();
+        if ($provider->isNameExisting('userid1')) {
+            $provider->delete('userid1');
         }
-        if ($provider->isUserNameExisting('USERID_2')) {
-            $provider->deleteUser('USERID_2');
+        if ($provider->isNameExisting('USERID_2')) {
+            $provider->delete('USERID_2');
         }
-        $this->assertFalse($provider->isUserNameExisting('userid1'));
-        $this->assertFalse($provider->isUserNameExisting('USERID_2'));
+        $this->assertFalse($provider->isNameExisting('userid1'));
+        $this->assertFalse($provider->isNameExisting('USERID_2'));
 
         $user1 = new User();
         $user1->setId('userid1');
@@ -50,14 +50,14 @@ class UserProviderTest extends TestCase
         $user3->setPassword('password1');
         $user3->setGroups(array('Everyone', 'Administrators'));
 
-        $user1 = $provider->createUser($user1);
-        $user2 = $provider->createUser($user2);
-        $user3 = $provider->createUser($user3);
+        $user1 = $provider->create($user1);
+        $user2 = $provider->create($user2);
+        $user3 = $provider->create($user3);
 
-        $this->assertTrue($provider->isUserNameExisting('userid1'));
-        $this->assertTrue($provider->isUserNameExisting('USERID_2'));
-        $user_test1 = $provider->getUser($user1->getId());
-        $user_test2 = $provider->getUser($user2->getId());
+        $this->assertTrue($provider->isNameExisting('userid1'));
+        $this->assertTrue($provider->isNameExisting('USERID_2'));
+        $user_test1 = $provider->get($user1->getId());
+        $user_test2 = $provider->get($user2->getId());
         $this->assertNotEmpty($user_test1);
         $this->assertNotEmpty($user_test2);
 
@@ -74,34 +74,34 @@ class UserProviderTest extends TestCase
         $this->assertTrue($user_test1->verifyPassword('password1'));
         $this->assertTrue($user_test2->verifyPassword('password2'));
 
-        $find = $provider->findUsers('displayName', 'userid1 TEST ');
+        $find = $provider->find('displayName', 'userid1 TEST ');
         $this->assertNotEmpty($find);
         $this->assertEquals(1, count($find));
-        $find = $provider->findUsers('email', 'userid1.test@test.com');
+        $find = $provider->find('email', 'userid1.test@test.com');
         $this->assertNotEmpty($find);
         $this->assertEquals(1, count($find));
-        $find = $provider->findUsers('email', 'userid_2.test@test.com');
+        $find = $provider->find('email', 'userid_2.test@test.com');
         $this->assertNotEmpty($find);
         $this->assertEquals(1, count($find));
         $this->assertEquals('userid_2', $find[0]->getUserName());
-        $find = $provider->findUsers('displayName', '*USERID*');
+        $find = $provider->find('displayName', '*USERID*');
         $this->assertNotEmpty($find);
         $this->assertEquals(2, count($find));
 
-        $this->assertFalse($provider->isUserNameExisting('userid3'));
+        $this->assertFalse($provider->isNameExisting('userid3'));
         try {
-            $provider->getUser('userid3');
+            $provider->get('userid3');
         } catch (Exception $e) {
             $this->assertNotEmpty($e);
         }
 
-        $user_test1 = $provider->getUser($user1->getId());
+        $user_test1 = $provider->get($user1->getId());
         $user_test1->setDisplayName('userid1 test update');
         $user_test1->setPasswordHash(User::hashPassword('password1_update'));
         $user_test1->setEmail('userid1.test_update@test.com');
         $user_test1->setGroups(['Administrators']);
-        $provider->updateUser($user_test1);
-        $user_test1 = $provider->getUser($user1->getId());
+        $provider->update($user_test1);
+        $user_test1 = $provider->get($user1->getId());
         $this->assertEquals('userid1', $user_test1->getUserName());
         $this->assertEquals('userid1.test_update@test.com', $user_test1->getEmail());
         $this->assertFalse($user_test1->verifyPassword('password1'));
@@ -110,16 +110,16 @@ class UserProviderTest extends TestCase
 
         // delete attribute test
         $user_test1->setDisplayName('');
-        $provider->updateUser($user_test1);
-        $user_test1 = $provider->getUser($user_test1->getId());
+        $provider->update($user_test1);
+        $user_test1 = $provider->get($user_test1->getId());
         $this->assertEquals('', $user_test1->getDisplayName());
         $user_test1->setDisplayName('userid1 test');
-        $provider->updateUser($user_test1);
-        $user_test1 = $provider->getUser($user_test1->getId());
+        $provider->update($user_test1);
+        $user_test1 = $provider->get($user_test1->getId());
         $this->assertEquals('userid1 test', $user_test1->getDisplayName());
-        $provider->updateUser($user_test1);
+        $provider->update($user_test1);
 
-        $users = $provider->getUsers();
+        $users = $provider->getAll();
         $this->assertNotEmpty($users);
         $this->assertEquals(3, count($users));
 
@@ -163,7 +163,7 @@ class UserProviderTest extends TestCase
         // $this->assertTrue($user_test1->verifyPassword('password1_update'));
         // $this->assertTrue($user_test1->getGroups() == ['Administrators']);
 
-        $provider->deleteUsers();
+        $provider->deleteAll();
     }
 
 }

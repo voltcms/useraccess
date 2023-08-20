@@ -10,9 +10,9 @@ use \VoltCMS\UserAccess\RestApp;
 
 $userProvider = new FileUserProvider('../../testdata/user');
 
-if ($userProvider->isUserNameExisting('Administrator')){
+if ($userProvider->isNameExisting('Administrator')){
     $admin = new User('Administrator', 'Administrator', 'Administrator User', 'administrator@useraccess.net', true, User::hashPassword('abcd1234'), array('Everyone', 'Administrators'));
-    $userProvider->createUser($admin);
+    $userProvider->create($admin);
 }
 
 $app = new RestApp($userProvider);

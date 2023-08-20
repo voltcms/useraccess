@@ -108,7 +108,7 @@ class SessionAuth
             // refresh logged in user if last refresh time is too old
             if ($_SESSION[self::UA_AUTH] === true &&
                 $_SESSION[self::UA_REFRESH] < self::$instance->now - self::$instance->refreshTime) {
-                $user = self::$instance->getUser($_SESSION[self::UA_USERNAME]);
+                $user = self::$instance->get($_SESSION[self::UA_USERNAME]);
                 if ($user !== null && $user->isActive()) {
                     self::$instance->setSessionInfo($user, 0);
                 } else {
@@ -118,7 +118,7 @@ class SessionAuth
         }
     }
 
-    private function getUser(string $userName): ?User
+    private function get(string $userName): ?User
     {
         if (is_array(self::$instance->userProviders)) {
             foreach (self::$instance->userProviders as $userProvider) {
@@ -136,13 +136,13 @@ class SessionAuth
     private function findUser(UserProviderInterface $userProvider, string $userName): ?User
     {
         if (strpos($userName, '@') !== false) {
-            $users = $userProvider->findUsers('email', $userName);
+            $users = $userProvider->find('email', $userName);
             if (!empty($users) && count($users) == 1) {
                 return $users[0];
             }
         } else {
-            if ($userProvider->isUserNameExisting($userName)) {
-                return $userProvider->getUser($userName);
+            if ($userProvider->isNameExisting($userName)) {
+                return $userProvider->get($userName);
             }
         }
         return null;
@@ -174,7 +174,7 @@ class SessionAuth
         $userName = trim(strtolower($userName));
         $password = trim($password);
         if (!empty($userName) && !empty($password)) {
-            $user = $this->getUser($userName);
+            $user = $this->get($userName);
             if ($user !== null && $user->isActive() && $_SESSION[self::UA_ATTEMPTS] < $this->maxLoginAttempts + 1) {
                 if ($user->verifyPassword($password)) {
                     if (empty($csrf_token) || hash_equals($_SESSION[self::UA_CSRF], $csrf_token)) {
@@ -251,7 +251,7 @@ class SessionAuth
             if ($this->loggedInUser !== null) {
                 return $this->loggedInUser;
             } else {
-                $this->getUser($_SESSION[self::UA_USERNAME]);
+                $this->get($_SESSION[self::UA_USERNAME]);
             }
         } else {
             return null;

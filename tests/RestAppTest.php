@@ -46,7 +46,7 @@ class RestAppTest extends TestCase
     //     ob_end_clean();
     // }
 
-    // public function test110_CreateUser() {
+    // public function test110_create() {
     //     $req = $this->createRequest('POST', '/v1/Users');
     //     $attributes = array();
     //     $attributes['userName'] = $this->userName;
@@ -62,7 +62,7 @@ class RestAppTest extends TestCase
     //     $this->userId = $attributes['id'];
     // }
 
-    // public function test_05_GetUser() {
+    // public function test_05_get() {
     //     $_SERVER['REQUEST_METHOD'] = 'GET';
     //     $_SERVER['REQUEST_URI'] = '/v1/Users/user';
     //     ob_start();
@@ -74,7 +74,7 @@ class RestAppTest extends TestCase
     //     ob_end_clean();
     // }
 
-    // public function test111_GetUser() {
+    // public function test111_get() {
     //     $id = $this->getEntryId(UserInterface::TYPE);
     //     $req = $this->createRequest('GET', '/v1/Users/' . $id);
     //     $response = $this->app->getApp()->handle($req);
@@ -82,7 +82,7 @@ class RestAppTest extends TestCase
     //     $this->assertNotEmpty((string)$response->getBody());
     // }
 
-    // public function test112_UpdateUser() {
+    // public function test112_update() {
     //     $id = $this->getEntryId(UserInterface::TYPE);
     //     $req = $this->createRequest('POST', '/v1/Users/' . $id);
     //     $attributes = array();
@@ -92,7 +92,7 @@ class RestAppTest extends TestCase
     //     $this->assertSame($response->getStatusCode(), 200);
     // }
 
-    // public function test115_DeleteUser() {
+    // public function test115_delete() {
     //     $id = $this->getEntryId(UserInterface::TYPE);
     //     $req = $this->createRequest('DELETE', '/v1/Users/' . $id);
     //     $response = $this->app->getApp()->handle($req);

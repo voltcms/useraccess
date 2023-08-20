@@ -4,7 +4,7 @@ namespace VoltCMS\UserAccess;
 
 use \Exception;
 
-class StaticUserProvider implements UserProviderInterface
+class StaticGroupProvider implements GroupProviderInterface
 {
 
     private static $instance = null;
@@ -40,31 +40,29 @@ class StaticUserProvider implements UserProviderInterface
         }
     }
 
-    public function isNameExisting(string $userName): bool
+    public function isNameExisting(string $groupName): bool
     {
-        return $this->isIdExisting($userName);
+        return $this->isIdExisting($groupName);
     }
 
-    public function get(string $userName): User
+    public function get(string $groupName): Group
     {
-        $id = trim(strtolower($userName));
-        if ($this->isIdExisting($userName)) {
-            return $this->entries[$userName];
+        $id = trim(strtolower($groupName));
+        if ($this->isIdExisting($groupName)) {
+            return $this->entries[$groupName];
         } else {
-            throw new Exception('EXCEPTION_USER_NOT_EXIST');
+            throw new Exception('EXCEPTION_GROUP_NOT_EXIST');
         }
     }
 
-    public function create(User $user): User
+    public function create(Group $group): Group
     {
-        if ($this->isNameExisting($user->getUserName())) {
-            throw new Exception('EXCEPTION_USER_ALREADY_EXIST');
-        } else if (!empty($user->getEmail()) && !empty($this->find('email', $user->getEmail()))) {
-            throw new Exception('EXCEPTION_DUPLICATE_EMAIL');
+        if ($this->isNameExisting($group->getGroupName())) {
+            throw new Exception('EXCEPTION_GROUP_ALREADY_EXIST');
         } else {
-            $user->setId($user->getUserName());
-            $this->entries[$user->getId()] = $user;
-            return $user;
+            $group->setId($group->getGroupName());
+            $this->entries[$group->getId()] = $group;
+            return $group;
         }
     }
 
@@ -95,14 +93,14 @@ class StaticUserProvider implements UserProviderInterface
         return $result;
     }
 
-    public function update(User $user): User
+    public function update(Group $group): Group
     {
-        if ($this->isIdExisting($user->getUserName())) {
-            $user->setId($user->getUserName());
-            $this->entries[$user->getId()] = $user;
-            return $user;
+        if ($this->isIdExisting($group->getGroupName())) {
+            $group->setId($group->getGroupName());
+            $this->entries[$group->getId()] = $group;
+            return $group;
         } else {
-            throw new Exception('EXCEPTION_USER_NOT_EXIST');
+            throw new Exception('EXCEPTION_GROUP_NOT_EXIST');
         }
     }
 
@@ -112,7 +110,7 @@ class StaticUserProvider implements UserProviderInterface
         if ($this->isIdExisting($id)) {
             unset($this->entries[$id]);
         } else {
-            throw new Exception('EXCEPTION_USER_NOT_EXIST');
+            throw new Exception('EXCEPTION_GROUP_NOT_EXIST');
         }
     }
 

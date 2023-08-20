@@ -16,7 +16,7 @@ class Sanitizer
 
     public static function sanitizeArray(array $value): array
     {
-        return array_map('self::sanitizeString', $value);
+        return array_map('\\VoltCMS\\UserAccess\\Sanitizer::sanitizeString', $value);
     }
 
     public static function sanitizeStringToArray(string $value): array

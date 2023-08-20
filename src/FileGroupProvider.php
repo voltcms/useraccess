@@ -5,7 +5,7 @@ namespace VoltCMS\UserAccess;
 use \Exception;
 use \VoltCMS\FileDB\FileDB;
 
-class FileUserProvider implements UserProviderInterface
+class FileGroupProvider implements GroupProviderInterface
 {
 
     private static $instance = null;
@@ -42,31 +42,29 @@ class FileUserProvider implements UserProviderInterface
         return !empty(self::$db->read($id));
     }
 
-    public function isNameExisting(string $userName): bool
+    public function isNameExisting(string $groupName): bool
     {
-        return $this->isIdExisting($userName);
+        return $this->isIdExisting($groupName);
     }
 
-    public function get(string $userName): User
+    public function get(string $groupName): Group
     {
-        $id = trim(strtolower($userName));
+        $id = trim(strtolower($groupName));
         if ($this->isIdExisting($id)) {
             return $this->documentToEntry(self::$db->read($id)[0]);
         } else {
-            throw new Exception('EXCEPTION_USER_NOT_EXIST');
+            throw new Exception('EXCEPTION_GROUP_NOT_EXIST');
         }
     }
 
-    public function create(User $user): User
+    public function create(Group $group): Group
     {
-        if ($this->isNameExisting($user->getUserName())) {
-            throw new Exception('EXCEPTION_USER_ALREADY_EXIST');
-        } else if (!empty($user->getEmail()) && !empty($this->find('email', $user->getEmail()))) {
-            throw new Exception('EXCEPTION_DUPLICATE_EMAIL');
+        if ($this->isNameExisting($group->getGroupName())) {
+            throw new Exception('EXCEPTION_GROUP_ALREADY_EXIST');
         } else {
-            $user->setId($user->getUserName());
-            $id = self::$db->create($user->getUserName(), $user->getAttributes());
-            return $user;
+            $group->setId($group->getGroupName());
+            $id = self::$db->create($group->getGroupName(), $group->getAttributes());
+            return $group;
         }
     }
 
@@ -86,19 +84,13 @@ class FileUserProvider implements UserProviderInterface
         return $this->documentsToEntries($items);
     }
 
-    public function update(User $user): User
+    public function update(Group $group): Group
     {
-        if ($this->isIdExisting($user->getUserName())) {
-            if (!empty($user->getEmail())) {
-                $items = $this->find('email', $user->getEmail());
-                if (!empty($items) && $items[0]->getUserName() != $user->getUserName()) {
-                    throw new Exception('EXCEPTION_DUPLICATE_EMAIL');
-                }
-            }
-            self::$db->update($user->getUserName(), $user->getAttributes());
-            return $user;
+        if ($this->isIdExisting($group->getGroupName())) {
+            self::$db->update($group->getGroupName(), $group->getAttributes());
+            return $group;
         } else {
-            throw new Exception('EXCEPTION_USER_NOT_EXIST');
+            throw new Exception('EXCEPTION_GROUP_NOT_EXIST');
         }
     }
 
@@ -108,7 +100,7 @@ class FileUserProvider implements UserProviderInterface
         if ($this->isIdExisting($id)) {
             self::$db->delete($id);
         } else {
-            throw new Exception('EXCEPTION_USER_NOT_EXIST');
+            throw new Exception('EXCEPTION_GROUP_NOT_EXIST');
         }
     }
 
@@ -126,11 +118,11 @@ class FileUserProvider implements UserProviderInterface
         return $result;
     }
 
-    private function documentToEntry(array $attributes): User
+    private function documentToEntry(array $attributes): Group
     {
-        $user = new User();
-        $user->setAttributes($attributes);
-        return $user;
+        $group = new Group();
+        $group->setAttributes($attributes);
+        return $group;
     }
 
 }

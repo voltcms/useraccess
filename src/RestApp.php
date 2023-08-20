@@ -55,13 +55,13 @@ class RestApp
 
         $this->router->get('/v1/Users', function () {
             // header('Content-Type: application/scim+json');
-            $result = $this->userProvider->getUsers();
+            $result = $this->userProvider->getAll();
             echo json_encode($result);
         });
 
         $this->router->get('/v1/Users/{id}', function ($id) {
             // header('Content-Type: application/scim+json');
-            $result = $this->userProvider->getUser($id);
+            $result = $this->userProvider->get($id);
             echo json_encode($result);
         });
 
@@ -75,14 +75,14 @@ class RestApp
         //             throw new Exception(UserAccess::EXCEPTION_ENTRY_ALREADY_EXIST);
         //         }
         //         if (!empty($attributes['email'])) {
-        //             $find = $userAccess->getUserProvider()->findUsers('email', $attributes['email']);
+        //             $find = $userAccess->getUserProvider()->find('email', $attributes['email']);
         //             if (!empty($find)) {
         //                 throw new Exception(UserAccess::EXCEPTION_DUPLICATE_EMAIL);
         //             }
         //         }
         //         $entry = new User($attributes['userName']);
         //         $entry->setAttributes($attributes);
-        //         $entry = $userAccess->getUserProvider()->createUser($entry);
+        //         $entry = $userAccess->getUserProvider()->create($entry);
         //         $response->getBody()->write(json_encode(self::filterPassword($entry->getAttributes())));
         //         return $response->withHeader('Content-Type', 'application/scim+json')->withStatus(201);
         //     });
@@ -90,25 +90,25 @@ class RestApp
         //     $this->router->post('/v1/Users/{id}', function (Request $request, Response $response, array $args) {
         //         $userAccess = $this->get('userAccess');
         //         $attributes = filter_var_array($request->getParsedBody(), FILTER_SANITIZE_STRING);
-        //         $entry = $userAccess->getUserProvider()->getUser($args['id']);
+        //         $entry = $userAccess->getUserProvider()->get($args['id']);
         //         if (!empty($attributes['email'])) {
         //             $email = trim(strtolower($attributes['email']));
         //             if (strcasecmp($email, $entry->getEmail()) != 0) {
-        //                 $find = $userAccess->getUserProvider()->findUsers('email', $email);
+        //                 $find = $userAccess->getUserProvider()->find('email', $email);
         //                 if (!empty($find)) {
         //                     throw new Exception(UserAccess::EXCEPTION_DUPLICATE_EMAIL);
         //                 }
         //             }
         //         }
         //         $entry->setAttributes($attributes);
-        //         $userAccess->getUserProvider()->updateUser($entry);
+        //         $userAccess->getUserProvider()->update($entry);
         //         $response->getBody()->write(json_encode(self::filterPassword($entry->getAttributes())));
         //         return $response->withHeader('Content-Type', 'application/scim+json')->withStatus(200);
         //     });
 
         //     $this->router->delete('/v1/Users/{id}', function (Request $request, Response $response, array $args) {
         //         $userAccess = $this->get('userAccess');
-        //         $userAccess->getUserProvider()->deleteUser($args['id']);
+        //         $userAccess->getUserProvider()->delete($args['id']);
         //         return $response->withStatus(204);
         //     });
 

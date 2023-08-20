@@ -2,24 +2,24 @@
 
 namespace VoltCMS\UserAccess;
 
-interface UserProviderInterface
+interface GroupProviderInterface
 {
 
     public static function getInstance(array $config = null);
 
     public function isIdExisting(string $id): bool;
 
-    public function isNameExisting(string $userName): bool;
+    public function isNameExisting(string $groupName): bool;
 
-    public function create(User $user): User;
+    public function create(Group $group): Group;
 
-    public function get(string $userName): User;
+    public function get(string $groupName): Group;
 
     public function getAll(): array;
 
     public function find(string $attributeName, string $attributeValue): array;
 
-    public function update(User $user): User;
+    public function update(Group $group): Group;
 
     public function delete(string $id);
 
