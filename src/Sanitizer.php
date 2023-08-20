@@ -5,6 +5,8 @@ namespace VoltCMS\UserAccess;
 class Sanitizer
 {
 
+    public const REGEX = '/^[a-z0-9_\-]{1,32}/';
+
     public static function sanitizeString(string $value): string
     {
         $value = trim($value);

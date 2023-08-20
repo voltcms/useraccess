@@ -3,14 +3,11 @@
 namespace VoltCMS\UserAccess;
 
 use \Exception;
-use \VoltCMS\UserAccess\Sanitizer;
 
 // https://tools.ietf.org/html/rfc7643#section-8
 
 class User
 {
-
-    const REGEX = '/^[a-z0-9_\-]{1,32}/';
 
     private $schemas = ['urn:ietf:params:scim:schemas:core:2.0:User'];
     private $id = '';
@@ -57,7 +54,7 @@ class User
     public function setId(string $id)
     {
         $id = Sanitizer::sanitizeString($id);
-        if (!preg_match(self::REGEX, $id) || strlen($id) > 32) {
+        if (!preg_match(Sanitizer::REGEX, $id) || strlen($id) > 32) {
             throw new Exception('EXCEPTION_INVALID_USER_NAME');
         }
         $this->id = $id;
@@ -70,7 +67,7 @@ class User
     public function setUserName(string $userName)
     {
         $userName = Sanitizer::sanitizeString($userName);
-        if (!preg_match(self::REGEX, $userName) || strlen($userName) > 32) {
+        if (!preg_match(Sanitizer::REGEX, $userName) || strlen($userName) > 32) {
             throw new Exception('EXCEPTION_INVALID_USER_NAME');
         }
         $this->userName = $userName;

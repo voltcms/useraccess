@@ -3,8 +3,6 @@
 namespace VoltCMS\UserAccess;
 
 use \Exception;
-use \VoltCMS\UserAccess\Sanitizer;
-use \VoltCMS\UserAccess\User;
 
 class SessionAuth
 {

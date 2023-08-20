@@ -3,14 +3,11 @@
 namespace VoltCMS\UserAccess;
 
 use \Exception;
-use \VoltCMS\UserAccess\Sanitizer;
 
 // https://tools.ietf.org/html/rfc7643#section-8
 
 class Group
 {
-
-    const REGEX = '/^[a-z0-9_\-]{1,32}/';
 
     private $schemas = ['urn:ietf:params:scim:schemas:core:2.0:Group'];
     private $id = '';
@@ -27,7 +24,7 @@ class Group
     public function setId(string $id)
     {
         $id = Sanitizer::sanitizeString($id);
-        if (!preg_match(self::REGEX, $id) || strlen($id) > 32) {
+        if (!preg_match(Sanitizer::REGEX, $id) || strlen($id) > 32) {
             throw new Exception('EXCEPTION_INVALID_GROUP_NAME');
         }
         $this->id = $id;
@@ -40,7 +37,7 @@ class Group
     public function setGroupName(string $groupName)
     {
         $groupName = Sanitizer::sanitizeString($groupName);
-        if (!preg_match(self::REGEX, $groupName) || strlen($groupName) > 32) {
+        if (!preg_match(Sanitizer::REGEX, $groupName) || strlen($groupName) > 32) {
             throw new Exception('EXCEPTION_INVALID_GROUP_NAME');
         }
         $this->groupName = $groupName;
