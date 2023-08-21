@@ -4,6 +4,7 @@ namespace VoltCMS\UserAccess;
 
 use \Exception;
 use \VoltCMS\FileDB\FileDB;
+use \VoltCMS\Uuid\Uuid;
 
 class FileGroupProvider implements GroupProviderInterface
 {
@@ -62,7 +63,9 @@ class FileGroupProvider implements GroupProviderInterface
         if ($this->isNameExisting($group->getGroupName())) {
             throw new Exception('EXCEPTION_GROUP_ALREADY_EXIST');
         } else {
-            $group->setId($group->getGroupName());
+            if (!$group->getId()) {
+                $group->setId(Uuid::generate());
+            }
             $id = self::$db->create($group->getGroupName(), $group->getAttributes());
             return $group;
         }

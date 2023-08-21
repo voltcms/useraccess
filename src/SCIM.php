@@ -8,11 +8,12 @@ class SCIM
 	private $userProvider;
     private $groupProvider;
 	
-	function __construct(UserProviderInterface $userProvider, GroupProviderInterface $groupProvider)
+	//function __construct(UserProviderInterface $userProvider, GroupProviderInterface $groupProvider)
+	function __construct(UserProviderInterface $userProvider)
 	{
 		//$this->db = new Database();
 		$this->userProvider = $userProvider;
-		$this->groupProvider = $groupProvider;
+		//$this->groupProvider = $groupProvider;
 	}
 	
 	public function createUser($requestBody)
@@ -155,26 +156,32 @@ class SCIM
 	public function listUsers($options)
 	{
 		$payload = array();
-		$users = $this->db->listResources("2.0", 0, $options, false);
-		$totalUsers = $this->db->listResources("2.0", 0, $options, true);
+
+		$users = $this->userProvider->readAll();
+
+		//$users = $this->db->listResources("2.0", 0, $options, false);
+		//$totalUsers = $this->db->listResources("2.0", 0, $options, true);
 		
 		$payload['schemas'] = array('urn:ietf:params:scim:api:messages:2.0:ListResponse');
-		$payload['totalResults'] = $totalUsers;
+		$payload['totalResults'] = count($users);
 		$payload['startIndex'] = 1;
 		$payload['itemsPerPage'] = 0;
 		
-		if((int) $options['startIndex'] > 0)
-			$payload['startIndex'] = (int) $options['startIndex'];
+		// if((int) $options['startIndex'] > 0)
+		// 	$payload['startIndex'] = (int) $options['startIndex'];
 		
-		if((int) $options['count'] > 0 && $options['count'] < $totalUsers)
-			$payload['itemsPerPage'] = (int) $options['count'];
-		elseif($totalUsers > 0)
-			$payload['itemsPerPage'] = $totalUsers;
+		// if((int) $options['count'] > 0 && $options['count'] < $totalUsers)
+		// 	$payload['itemsPerPage'] = (int) $options['count'];
+		// elseif($totalUsers > 0)
+		// 	$payload['itemsPerPage'] = $totalUsers;
 		
 		$payload['Resources'] = array();
 
-		foreach($users as $user)
-			$payload['Resources'][] = json_decode($this->getUser($user, 1));
+		// foreach($users as $user)
+		// 	$payload['Resources'][] = json_decode($this->getUser($user, 1));
+		foreach($users as $user) {
+			$payload['Resources'][] = json_decode($user->toJson(), 1);
+		}
 		
 		header("Content-Type: application/json", true, 200);
 		echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));

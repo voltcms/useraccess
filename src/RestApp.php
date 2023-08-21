@@ -55,13 +55,13 @@ class RestApp
 
         $this->router->get('/v1/Users', function () {
             // header('Content-Type: application/scim+json');
-            $result = $this->userProvider->getAll();
+            $result = $this->userProvider->readAll();
             echo json_encode($result);
         });
 
         $this->router->get('/v1/Users/{id}', function ($id) {
             // header('Content-Type: application/scim+json');
-            $result = $this->userProvider->get($id);
+            $result = $this->userProvider->read('id', $id);
             echo json_encode($result);
         });
 

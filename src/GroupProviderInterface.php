@@ -7,17 +7,15 @@ interface GroupProviderInterface
 
     public static function getInstance(array $config = null);
 
-    public function isIdExisting(string $id): bool;
-
-    public function isNameExisting(string $groupName): bool;
+    public function exists(string $attribute, string $value): bool;
 
     public function create(Group $group): Group;
 
-    public function get(string $groupName): Group;
+    public function read(String $attribute, string $value): Group;
 
-    public function getAll(): array;
+    public function readAll(): array;
 
-    public function find(string $attributeName, string $attributeValue): array;
+    public function find(string $attribute, string $value): array;
 
     public function update(Group $group): Group;
 

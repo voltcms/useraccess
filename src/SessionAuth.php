@@ -139,8 +139,8 @@ class SessionAuth
                 return $users[0];
             }
         } else {
-            if ($userProvider->isNameExisting($userName)) {
-                return $userProvider->get($userName);
+            if ($userProvider->exists('userName', $userName)) {
+                return $userProvider->read('userName', $userName);
             }
         }
         return null;

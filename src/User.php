@@ -54,8 +54,8 @@ class User
     public function setId(string $id)
     {
         $id = Sanitizer::sanitizeString($id);
-        if (!preg_match(Sanitizer::REGEX, $id) || strlen($id) > 32) {
-            throw new Exception('EXCEPTION_INVALID_USER_NAME');
+        if (!preg_match(Sanitizer::REGEX_ID, $id)) {
+            throw new Exception('EXCEPTION_INVALID_USER_ID');
         }
         $this->id = $id;
     }
@@ -66,8 +66,7 @@ class User
     }
     public function setUserName(string $userName)
     {
-        $userName = Sanitizer::sanitizeString($userName);
-        if (!preg_match(Sanitizer::REGEX, $userName) || strlen($userName) > 32) {
+        if (!preg_match(Sanitizer::REGEX_NAME, $userName)) {
             throw new Exception('EXCEPTION_INVALID_USER_NAME');
         }
         $this->userName = $userName;
@@ -158,14 +157,13 @@ class User
     }
     public function addGroup(string $group)
     {
-        $group = Sanitizer::sanitizeString($group);
         if ($group !== '' && !in_array($group, $this->groups)) {
             $this->groups[] = $group;
         }
     }
     public function removeGroup(string $group)
     {
-        if (($key = array_search(Sanitizer::sanitizeString($group), $this->groups)) !== false) {
+        if (($key = array_search($group, $this->groups)) !== false) {
             unset($this->groups[$key]);
         }
     }
@@ -179,7 +177,7 @@ class User
         $this->loginAttempts = $loginAttempts;
     }
 
-    public function getAttributes(): array
+    public function getAttributes(bool $includePasswordHash = true): array
     {
         $attributes = [];
         $attributes['schemas'] = $this->schemas;
@@ -188,7 +186,9 @@ class User
         $attributes['displayName'] = $this->displayName;
         $attributes['email'] = $this->email;
         $attributes['active'] = $this->active;
-        $attributes['passwordHash'] = $this->passwordHash;
+        if ($includePasswordHash) {
+            $attributes['passwordHash'] = $this->passwordHash;
+        }
         $attributes['groups'] = $this->groups;
         $attributes['loginAttempts'] = $this->loginAttempts;
         return $attributes;
@@ -196,7 +196,7 @@ class User
 
     public function toJson(): string
     {
-        return json_encode($this->getAttributes());
+        return json_encode($this->getAttributes(false));
     }
 
     public function setAttributes(array $attributes)

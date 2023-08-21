@@ -5,16 +5,28 @@ session_start();
 require 'vendor/autoload.php';
 
 use \VoltCMS\UserAccess\User;
-use \VoltCMS\UserAccess\FileUserProvider;
-use \VoltCMS\UserAccess\FileGroupProvider;
-use VoltCMS\UserAccess\SCIMApp;
+use \VoltCMS\UserAccess\UserProvider;
+//use \VoltCMS\UserAccess\GroupProvider;
+use \VoltCMS\UserAccess\SCIMApp;
 
-$userProvider = new FileUserProvider('testdata/user');
-$groupProvider = new FileGroupProvider('testdata/group');
+$userProvider = UserProvider::getInstance(array('directory' => 'testdata/users'));
+//$groupProvider = FileGroupProvider::getInstance(array('directory' => 'testdata/groups'));
 
-if ($userProvider->isNameExisting('Administrator')){
-    $admin = new User('Administrator', 'Administrator', 'Administrator User', 'administrator@useraccess.net', true, User::hashPassword('abcd1234'), array('Everyone', 'Administrators'));
-    $userProvider->create($admin);
+if (!$userProvider->exists('userName', 'Administrator')){
+    $user1 = new User();
+    // $user1->setId('Administrator');
+    $user1->setUserName('Administrator');
+    $user1->setDisplayName('Administrator Administrator');
+    $user1->setEmail('Administrator@voltcms.com');
+    $user1->setPassword('Administrator');
+    $user1->setGroups(array('Everyone', 'Administrators'));
+    $user1 = $userProvider->create($user1);
 }
 
-$app = new SCIMApp($userProvider, $groupProvider);
+// if (!$userProvider->isNameExisting('Administrator')){
+//     echo("admin is not existing");
+// } else {
+//     echo("admin is existing");
+// }
+
+$app = new SCIMApp($userProvider);

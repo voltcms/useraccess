@@ -5,10 +5,12 @@ namespace VoltCMS\UserAccess;
 class SCIMApp
 {
 
-    public function __construct(UserProviderInterface $userProvider, GroupProviderInterface $groupProvider)
+    //public function __construct(UserProviderInterface $userProvider, GroupProviderInterface $groupProvider)
+    public function __construct(UserProviderInterface $userProvider)
     {
 
-        $scim20 = new SCIM($userProvider, $groupProvider);
+        //$scim20 = new SCIM($userProvider, $groupProvider);
+        $scim20 = new SCIM($userProvider);
 
         /* SCIM 2.0 */
         if (preg_match('/^(.*)\/scim\/v2\/Users\/[a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12}$/', @explode("?", $_SERVER['REQUEST_URI'])[0])) {
@@ -70,6 +72,7 @@ class SCIMApp
                 $scim20->throwError(400, "The requested endpoint is not available.");
             else
                 $scim20->throwError(405, "The endpoint does not support the provided method.");
+        } else {
         }
     }
 }

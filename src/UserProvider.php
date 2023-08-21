@@ -4,8 +4,9 @@ namespace VoltCMS\UserAccess;
 
 use \Exception;
 use \VoltCMS\FileDB\FileDB;
+use \VoltCMS\Uuid\Uuid;
 
-class FileUserProvider implements UserProviderInterface
+class UserProvider implements UserProviderInterface
 {
 
     private static $instance = null;
@@ -36,21 +37,43 @@ class FileUserProvider implements UserProviderInterface
         throw new Exception("Cannot unserialize Object");
     }
 
-    public function isIdExisting(string $id): bool
+    public function exists(string $attribute, string $value): bool
     {
-        $id = trim(strtolower($id));
-        return !empty(self::$db->read($id));
+        if ($attribute == 'id') {
+            $id = trim(strtolower($value));
+            return !empty(self::$db->read($id));
+        } else {
+            return !empty($this->find($attribute, $value));
+        }
     }
 
-    public function isNameExisting(string $userName): bool
+    public function read(string $attribute, string $value): User
     {
-        return $this->isIdExisting($userName);
+        if ($attribute == 'id') {
+            $id = trim(strtolower($value));
+            if ($this->exists($attribute, $id)) {
+                return $this->documentToEntry(self::$db->read($id)[0]);
+            } else {
+                throw new Exception('EXCEPTION_USER_NOT_EXIST');
+            }
+        } else {
+            if ($this->exists($attribute, $value)) {
+                $result = $this->find($attribute, $value);
+                if (count($result) == 1) {
+                    return $result[0];
+                } else {
+                    throw new Exception('EXCEPTION_USER_NOT_EXIST');
+                }
+            } else {
+                throw new Exception('EXCEPTION_USER_NOT_EXIST');
+            }
+        }
     }
 
     public function get(string $userName): User
     {
         $id = trim(strtolower($userName));
-        if ($this->isIdExisting($id)) {
+        if ($this->exists('userName', $id)) {
             return $this->documentToEntry(self::$db->read($id)[0]);
         } else {
             throw new Exception('EXCEPTION_USER_NOT_EXIST');
@@ -59,18 +82,20 @@ class FileUserProvider implements UserProviderInterface
 
     public function create(User $user): User
     {
-        if ($this->isNameExisting($user->getUserName())) {
+        if ($this->exists('userName', $user->getUserName())) {
             throw new Exception('EXCEPTION_USER_ALREADY_EXIST');
         } else if (!empty($user->getEmail()) && !empty($this->find('email', $user->getEmail()))) {
             throw new Exception('EXCEPTION_DUPLICATE_EMAIL');
         } else {
-            $user->setId($user->getUserName());
-            $id = self::$db->create($user->getUserName(), $user->getAttributes());
+            if (!$user->getId()) {
+                $user->setId(Uuid::generate());
+            }
+            $id = self::$db->create($user->getId(), $user->getAttributes());
             return $user;
         }
     }
 
-    public function getAll(): array
+    public function readAll(): array
     {
         $items = self::$db->readAll();
         return $this->documentsToEntries($items);
@@ -88,14 +113,14 @@ class FileUserProvider implements UserProviderInterface
 
     public function update(User $user): User
     {
-        if ($this->isIdExisting($user->getUserName())) {
+        if ($this->exists('userName', $user->getUserName())) {
             if (!empty($user->getEmail())) {
                 $items = $this->find('email', $user->getEmail());
                 if (!empty($items) && $items[0]->getUserName() != $user->getUserName()) {
                     throw new Exception('EXCEPTION_DUPLICATE_EMAIL');
                 }
             }
-            self::$db->update($user->getUserName(), $user->getAttributes());
+            self::$db->update($user->getId(), $user->getAttributes());
             return $user;
         } else {
             throw new Exception('EXCEPTION_USER_NOT_EXIST');
@@ -105,7 +130,7 @@ class FileUserProvider implements UserProviderInterface
     public function delete(string $id)
     {
         $id = trim(strtolower($id));
-        if ($this->isIdExisting($id)) {
+        if ($this->exists('id', $id)) {
             self::$db->delete($id);
         } else {
             throw new Exception('EXCEPTION_USER_NOT_EXIST');

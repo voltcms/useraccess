@@ -1,7 +1,7 @@
 <?php
 
 use \PHPUnit\Framework\TestCase;
-use \VoltCMS\UserAccess\FileUserProvider;
+use \VoltCMS\UserAccess\UserProvider;
 use \VoltCMS\UserAccess\RestApp;
 
 class RestAppTest extends TestCase
@@ -17,7 +17,7 @@ class RestAppTest extends TestCase
 
     public function setUp(): void
     {
-        $userProvider = FileUserProvider::getInstance(array('directory' => 'testdata/user'));
+        $userProvider = UserProvider::getInstance(array('directory' => 'testdata/users'));
         $this->app = new RestApp($userProvider);
 
         $_SERVER['SCRIPT_NAME'] = '/index.php';

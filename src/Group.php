@@ -24,8 +24,8 @@ class Group
     public function setId(string $id)
     {
         $id = Sanitizer::sanitizeString($id);
-        if (!preg_match(Sanitizer::REGEX, $id) || strlen($id) > 32) {
-            throw new Exception('EXCEPTION_INVALID_GROUP_NAME');
+        if (!preg_match(Sanitizer::REGEX, $id)) {
+            throw new Exception('EXCEPTION_INVALID_GROUP_ID');
         }
         $this->id = $id;
     }
@@ -37,7 +37,7 @@ class Group
     public function setGroupName(string $groupName)
     {
         $groupName = Sanitizer::sanitizeString($groupName);
-        if (!preg_match(Sanitizer::REGEX, $groupName) || strlen($groupName) > 32) {
+        if (!preg_match(Sanitizer::REGEX, $groupName)) {
             throw new Exception('EXCEPTION_INVALID_GROUP_NAME');
         }
         $this->groupName = $groupName;

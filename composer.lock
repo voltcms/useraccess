@@ -59,16 +59,16 @@
         },
         {
             "name": "voltcms/filedb",
-            "version": "1.5.0",
+            "version": "1.5.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/voltcms/filedb.git",
-                "reference": "63bbd4a7f7009e27c76f87bc718ce82cce584f10"
+                "reference": "9cdca1aa71c35d55543b18b25383f9d4b1ed5bcb"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/voltcms/filedb/zipball/63bbd4a7f7009e27c76f87bc718ce82cce584f10",
-                "reference": "63bbd4a7f7009e27c76f87bc718ce82cce584f10",
+                "url": "https://api.github.com/repos/voltcms/filedb/zipball/9cdca1aa71c35d55543b18b25383f9d4b1ed5bcb",
+                "reference": "9cdca1aa71c35d55543b18b25383f9d4b1ed5bcb",
                 "shasum": ""
             },
             "require": {
@@ -97,9 +97,9 @@
             "description": "Flat file DB based on JSON files",
             "support": {
                 "issues": "https://github.com/voltcms/filedb/issues",
-                "source": "https://github.com/voltcms/filedb/tree/1.5.0"
+                "source": "https://github.com/voltcms/filedb/tree/1.5.1"
             },
-            "time": "2023-08-19T10:42:42+00:00"
+            "time": "2023-08-21T14:59:24+00:00"
         },
         {
             "name": "voltcms/uuid",

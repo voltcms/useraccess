@@ -5,7 +5,8 @@ namespace VoltCMS\UserAccess;
 class Sanitizer
 {
 
-    public const REGEX = '/^[a-z0-9_\-]{1,32}/';
+    public const REGEX_ID = '/^[a-z0-9_\-]{1,36}/';
+    public const REGEX_NAME = '/^[\w@._\-]{1,36}/';
 
     public static function sanitizeString(string $value): string
     {
