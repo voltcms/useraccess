@@ -9,7 +9,6 @@ class UserTest extends TestCase
     public function test()
     {
         $user = new User();
-        $user->setId('userid1');
         $user->setUserName('userid1');
         $user->setDisplayName('user id 1');
         $user->setEmail('userid1@test.com');

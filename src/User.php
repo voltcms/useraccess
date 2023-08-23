@@ -9,10 +9,15 @@ use \Exception;
 class User
 {
 
-    private $schemas = ['urn:ietf:params:scim:schemas:core:2.0:User'];
-    private $id = '';
+    CONST RESOURCE_TYPE = 'User';
+    CONST SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:User';
+    private $_id = '';
+    private $_created = '';
+    private $_modified = '';
     private $userName = '';
     private $displayName = '';
+    private $familyName = '';
+    private $givenName = '';
     private $email = '';
     private $active = true;
     private $passwordHash = '';
@@ -49,15 +54,7 @@ class User
 
     public function getId(): string
     {
-        return $this->id;
-    }
-    public function setId(string $id)
-    {
-        $id = Sanitizer::sanitizeString($id);
-        if (!preg_match(Sanitizer::REGEX_ID, $id)) {
-            throw new Exception('EXCEPTION_INVALID_USER_ID');
-        }
-        $this->id = $id;
+        return $this->_id;
     }
 
     public function getUserName(): string
@@ -79,6 +76,24 @@ class User
     public function setDisplayName(string $displayName)
     {
         $this->displayName = trim($displayName);
+    }
+
+    public function getFamilyName(): string
+    {
+        return $this->familyName;
+    }
+    public function setFamilyName(string $familyName)
+    {
+        $this->familyName = trim($familyName);
+    }
+
+    public function getGivenName(): string
+    {
+        return $this->givenName;
+    }
+    public function setGivenName(string $givenName)
+    {
+        $this->givenName = trim($givenName);
     }
 
     public function getEmail(): string
@@ -177,38 +192,71 @@ class User
         $this->loginAttempts = $loginAttempts;
     }
 
-    public function getAttributes(bool $includePasswordHash = true): array
+    public function getAttributes(): array
     {
         $attributes = [];
-        $attributes['schemas'] = $this->schemas;
-        $attributes['id'] = $this->id;
+        $attributes['_id'] = $this->_id;
+        $attributes['_created'] = $this->_created;
+        $attributes['_modified'] = $this->_modified;
         $attributes['userName'] = $this->userName;
         $attributes['displayName'] = $this->displayName;
+        $attributes['familyName'] = $this->familyName;
+        $attributes['givenName'] = $this->givenName;
         $attributes['email'] = $this->email;
         $attributes['active'] = $this->active;
-        if ($includePasswordHash) {
-            $attributes['passwordHash'] = $this->passwordHash;
-        }
+        $attributes['passwordHash'] = $this->passwordHash;
         $attributes['groups'] = $this->groups;
         $attributes['loginAttempts'] = $this->loginAttempts;
         return $attributes;
     }
 
-    public function toJson(): string
+    public function toSCIM(): array
     {
-        return json_encode($this->getAttributes(false));
+        $result = $this->getAttributes();
+        $etag = md5(json_encode($result));
+        $result['schemas'] = [self::SCHEMA];
+        $result['id'] = $result['_id'];
+        $result['name'] = [
+            'familyName' => $result['familyName'],
+            'givenName' => $result['givenName']
+        ];
+        $result['emails'] = [
+            'type' => 'work',
+            'primary' => 'true',
+            'value' => $result['email']
+        ];
+        $result['meta'] = [
+            'resourceType' => self::RESOURCE_TYPE,
+            'created' => $result['_created'],
+            'lastModified' => $result['_modified'],
+            'version' => $etag,
+            'location' => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]" . str_replace("index.php", "", $_SERVER['SCRIPT_NAME']) . "scim/v2/Users/" . $result['id']
+        ];
+        unset($result['_id']);
+        unset($result['_created']);
+        unset($result['_modified']);
+        unset($result['familyName']);
+        unset($result['givenName']);
+        unset($result['email']);
+        return $result;
     }
 
     public function setAttributes(array $attributes)
     {
-        if (array_key_exists('id', $attributes)) {
-            $this->setId($attributes['id']);
+        if (array_key_exists('_id', $attributes)) {
+            $this->_id = $attributes['_id'];
         }
         if (array_key_exists('userName', $attributes)) {
             $this->setUserName($attributes['userName']);
         }
         if (array_key_exists('displayName', $attributes)) {
             $this->setDisplayName($attributes['displayName']);
+        }
+        if (array_key_exists('familyName', $attributes)) {
+            $this->setFamilyName($attributes['familyName']);
+        }
+        if (array_key_exists('givenName', $attributes)) {
+            $this->setGivenName($attributes['givenName']);
         }
         if (array_key_exists('passwordHash', $attributes)) {
             $this->setPasswordHash($attributes['passwordHash']);
@@ -228,6 +276,12 @@ class User
         }
         if (array_key_exists('groups', $attributes)) {
             $this->setGroups($attributes['groups']);
+        }
+        if (array_key_exists('_created', $attributes)) {
+            $this->_created = $attributes['_created'];
+        }
+        if (array_key_exists('_modified', $attributes)) {
+            $this->_modified = $attributes['_modified'];
         }
     }
 

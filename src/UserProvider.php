@@ -87,11 +87,8 @@ class UserProvider implements UserProviderInterface
         } else if (!empty($user->getEmail()) && !empty($this->find('email', $user->getEmail()))) {
             throw new Exception('EXCEPTION_DUPLICATE_EMAIL');
         } else {
-            if (!$user->getId()) {
-                $user->setId(Uuid::generate());
-            }
-            $id = self::$db->create($user->getId(), $user->getAttributes());
-            return $user;
+            $id = self::$db->create(null, $user->getAttributes());
+            return $this->documentToEntry(self::$db->read($id)[0]);
         }
     }
 

@@ -14,9 +14,10 @@ $userProvider = UserProvider::getInstance(array('directory' => 'testdata/users')
 
 if (!$userProvider->exists('userName', 'Administrator')){
     $user1 = new User();
-    // $user1->setId('Administrator');
     $user1->setUserName('Administrator');
-    $user1->setDisplayName('Administrator Administrator');
+    $user1->setDisplayName('Admin Last');
+    $user1->setFamilyName('Last');
+    $user1->setGivenName('Admin');
     $user1->setEmail('Administrator@voltcms.com');
     $user1->setPassword('Administrator');
     $user1->setGroups(array('Everyone', 'Administrators'));

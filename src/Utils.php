@@ -78,7 +78,7 @@ class Utils
     public static function getDirectory($subfolder, $relativeDocRoot)
     {
         $directory = '';
-        if (strpos($subfolder, 'http://') === 0 || strpos($subfolder, 'https://') === 0) {
+        if (str_starts_with($subfolder, 'http://') || str_starts_with($subfolder, 'https://')) {
             $subfolder = substr($subfolder, strpos($subfolder, '/', 8));
         }
         if ($subfolder[0] == "/") {
