@@ -110,10 +110,10 @@ class UserProvider implements UserProviderInterface
 
     public function update(User $user): User
     {
-        if ($this->exists('userName', $user->getUserName())) {
+        if ($this->exists('id', $user->getId())) {
             if (!empty($user->getEmail())) {
                 $items = $this->find('email', $user->getEmail());
-                if (!empty($items) && $items[0]->getUserName() != $user->getUserName()) {
+                if (!empty($items) && $items[0]->getId() != $user->getId()) {
                     throw new Exception('EXCEPTION_DUPLICATE_EMAIL');
                 }
             }

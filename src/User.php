@@ -14,6 +14,7 @@ class User
     private $_id = '';
     private $_created = '';
     private $_modified = '';
+    private $schemas = ['urn:ietf:params:scim:schemas:core:2.0:User'];
     private $userName = '';
     private $displayName = '';
     private $familyName = '';
@@ -52,6 +53,8 @@ class User
 
     //////////////////////////////////////////////////
 
+    // public function __construct() {}
+
     public function getId(): string
     {
         return $this->_id;
@@ -64,6 +67,7 @@ class User
     public function setUserName(string $userName)
     {
         if (!preg_match(Sanitizer::REGEX_NAME, $userName)) {
+            error_log('test:'.$userName);
             throw new Exception('EXCEPTION_INVALID_USER_NAME');
         }
         $this->userName = $userName;
@@ -111,12 +115,6 @@ class User
     public function getEmails(): array
     {
         return [$this->getEmail()];
-    }
-    public function setEmails(array $emails)
-    {
-        if (!empty($emails)) {
-            $this->setEmail(current($emails));
-        }
     }
 
     public function getActive(): bool
@@ -198,6 +196,7 @@ class User
         $attributes['_id'] = $this->_id;
         $attributes['_created'] = $this->_created;
         $attributes['_modified'] = $this->_modified;
+        $attributes['schemas'] = $this->schemas;
         $attributes['userName'] = $this->userName;
         $attributes['displayName'] = $this->displayName;
         $attributes['familyName'] = $this->familyName;
@@ -210,7 +209,7 @@ class User
         return $attributes;
     }
 
-    public function toSCIM(): array
+    public function toSCIM(bool $includeEtagLastModified = false): array
     {
         $result = $this->getAttributes();
         $etag = md5(json_encode($result));
@@ -220,15 +219,15 @@ class User
             'familyName' => $result['familyName'],
             'givenName' => $result['givenName']
         ];
-        $result['emails'] = [
+        $result['emails'] = [[
             'type' => 'work',
             'primary' => 'true',
             'value' => $result['email']
-        ];
+        ]];
         $result['meta'] = [
             'resourceType' => self::RESOURCE_TYPE,
-            'created' => $result['_created'],
-            'lastModified' => $result['_modified'],
+            'created' => date(DATE_ATOM, $result['_created']),
+            'lastModified' => date(DATE_ATOM, $result['_modified']),
             'version' => $etag,
             'location' => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]" . str_replace("index.php", "", $_SERVER['SCRIPT_NAME']) . "scim/v2/Users/" . $result['id']
         ];
@@ -238,11 +237,19 @@ class User
         unset($result['familyName']);
         unset($result['givenName']);
         unset($result['email']);
+        unset($result['passwordHash']);
+        unset($result['loginAttempts']);
+        if ($includeEtagLastModified) {
+            $result['etagLastModified'] = $result['_modified'];
+        }
         return $result;
     }
 
     public function setAttributes(array $attributes)
     {
+        if (array_key_exists('schemas', $attributes)) {
+            $this->schemas = $attributes['schemas'];
+        }
         if (array_key_exists('_id', $attributes)) {
             $this->_id = $attributes['_id'];
         }
@@ -258,6 +265,15 @@ class User
         if (array_key_exists('givenName', $attributes)) {
             $this->setGivenName($attributes['givenName']);
         }
+        if (array_key_exists('name', $attributes) && is_array($attributes['name'])) {
+
+            if (array_key_exists('familyName', $attributes['name'])) {
+                $this->setFamilyName($attributes['name']['familyName']);
+            }
+            if (array_key_exists('givenName', $attributes['name'])) {
+                $this->setGivenName($attributes['name']['givenName']);
+            }
+        }
         if (array_key_exists('passwordHash', $attributes)) {
             $this->setPasswordHash($attributes['passwordHash']);
         } else if (array_key_exists('password', $attributes)) {
@@ -265,8 +281,10 @@ class User
         }
         if (array_key_exists('email', $attributes)) {
             $this->setEmail($attributes['email']);
-        } else if (array_key_exists('emails', $attributes)) {
-            $this->setEmails($attributes['emails']);
+        } else if (array_key_exists('emails', $attributes) && is_array($attributes['emails'])) {
+            if ($attributes['emails'] && count($attributes['emails']) > 0) {
+                $this->setEmail($attributes['emails'][0]['value']);
+            }
         }
         if (array_key_exists('active', $attributes)) {
             $this->setActive($attributes['active']);
@@ -283,6 +301,10 @@ class User
         if (array_key_exists('_modified', $attributes)) {
             $this->_modified = $attributes['_modified'];
         }
+    }
+
+    public function fromSCIM(array $attributes) {
+        $this->setAttributes($attributes);
     }
 
 }

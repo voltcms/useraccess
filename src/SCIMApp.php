@@ -18,8 +18,10 @@ class SCIMApp
                 $scim20->getUser(explode("/", explode("?", $_SERVER['REQUEST_URI'])[0])[count(explode("/", @explode("?", $_SERVER['REQUEST_URI'])[0])) - 1], file_get_contents('php://input'));
             elseif ($_SERVER['REQUEST_METHOD'] == "PUT")
                 $scim20->putUser(file_get_contents('php://input'), explode("/", explode("?", $_SERVER['REQUEST_URI'])[0])[count(explode("/", @explode("?", $_SERVER['REQUEST_URI'])[0])) - 1]);
-            elseif ($_SERVER['REQUEST_METHOD'] == "PATCH")
-                $scim20->patchUser(file_get_contents('php://input'), explode("/", explode("?", $_SERVER['REQUEST_URI'])[0])[count(explode("/", @explode("?", $_SERVER['REQUEST_URI'])[0])) - 1]);
+            //elseif ($_SERVER['REQUEST_METHOD'] == "PATCH")
+                //$scim20->patchUser(file_get_contents('php://input'), explode("/", explode("?", $_SERVER['REQUEST_URI'])[0])[count(explode("/", @explode("?", $_SERVER['REQUEST_URI'])[0])) - 1]);
+            elseif ($_SERVER['REQUEST_METHOD'] == "DELETE")
+                $scim20->deleteUser(explode("/", explode("?", $_SERVER['REQUEST_URI'])[0])[count(explode("/", @explode("?", $_SERVER['REQUEST_URI'])[0])) - 1]);
             else
                 $scim20->throwError(405, "The endpoint does not support the provided method.");
         } elseif (preg_match('/^(.*)\/scim\/v2\/Users$/', @explode("?", $_SERVER['REQUEST_URI'])[0])) {
@@ -34,8 +36,8 @@ class SCIMApp
                 $scim20->getGroup(explode("/", explode("?", $_SERVER['REQUEST_URI'])[0])[count(explode("/", @explode("?", $_SERVER['REQUEST_URI'])[0])) - 1], file_get_contents('php://input'));
             elseif ($_SERVER['REQUEST_METHOD'] == "PUT")
                 $scim20->putGroup(file_get_contents('php://input'), explode("/", explode("?", $_SERVER['REQUEST_URI'])[0])[count(explode("/", @explode("?", $_SERVER['REQUEST_URI'])[0])) - 1]);
-            elseif ($_SERVER['REQUEST_METHOD'] == "PATCH")
-                $scim20->patchGroup(file_get_contents('php://input'), explode("/", explode("?", $_SERVER['REQUEST_URI'])[0])[count(explode("/", @explode("?", $_SERVER['REQUEST_URI'])[0])) - 1]);
+            //elseif ($_SERVER['REQUEST_METHOD'] == "PATCH")
+                //$scim20->patchGroup(file_get_contents('php://input'), explode("/", explode("?", $_SERVER['REQUEST_URI'])[0])[count(explode("/", @explode("?", $_SERVER['REQUEST_URI'])[0])) - 1]);
             elseif ($_SERVER['REQUEST_METHOD'] == "DELETE")
                 $scim20->deleteGroup(explode("/", explode("?", $_SERVER['REQUEST_URI'])[0])[count(explode("/", @explode("?", $_SERVER['REQUEST_URI'])[0])) - 1]);
             else
@@ -73,6 +75,7 @@ class SCIMApp
             else
                 $scim20->throwError(405, "The endpoint does not support the provided method.");
         } else {
+            $scim20->throwError(400, "The requested endpoint is not available.");
         }
     }
 }
