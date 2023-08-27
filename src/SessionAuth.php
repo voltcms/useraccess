@@ -21,27 +21,26 @@ class SessionAuth
     const SESSION_REFRESH_TIME = 60;
 
     // private static ?SessionAuth $instance = null;
-    // private ?array $userProviders = null;
     // private ?User $loggedInUser = null;
 
     private static $instance = null;
 
     private $now = 0;
-    private $userProviders = null;
+    private $userProvider = null;
     private $loggedInUser = null;
     private $maxLoginAttempts = 10;
     private $refreshTime = 60;
 
-    // public static function getInstance(array $userProviders): SessionAuth {
-    public static function getInstance($userProviders, $maxLoginAttempts = 10, $refreshTime = 60): SessionAuth
+    // public static function getInstance(array $userProvider): SessionAuth {
+    public static function getInstance($userProvider, $maxLoginAttempts = 10, $refreshTime = 60): SessionAuth
     {
-        if (empty($userProviders)) {
+        if (empty($userProvider)) {
             throw new Exception("User Providers cannot be empty");
         }
         if (self::$instance === null) {
             self::$instance = new static();
             self::$instance->now = time();
-            self::$instance->userProviders = $userProviders;
+            self::$instance->userProvider = $userProvider;
             self::$instance->maxLoginAttempts = $maxLoginAttempts;
             self::$instance->refreshTime = $refreshTime;
             self::$instance->startSession();
@@ -118,17 +117,7 @@ class SessionAuth
 
     private function get(string $userName): ?User
     {
-        if (is_array(self::$instance->userProviders)) {
-            foreach (self::$instance->userProviders as $userProvider) {
-                $user = $this->findUser($userProvider, $userName);
-                if ($user) {
-                    return $user;
-                }
-            }
-        } else {
-            return $this->findUser(self::$instance->userProviders, $userName);
-        }
-        return null;
+        return $this->findUser(self::$instance->userProvider, $userName);
     }
 
     private function findUser(UserProviderInterface $userProvider, string $userName): ?User

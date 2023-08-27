@@ -8,9 +8,21 @@ class SCIMApp
     //public function __construct(UserProviderInterface $userProvider, GroupProviderInterface $groupProvider)
     public function __construct(UserProviderInterface $userProvider)
     {
-
         //$scim20 = new SCIM($userProvider, $groupProvider);
         $scim20 = new SCIM($userProvider);
+
+        $performAuthentication = true;
+
+        if ($performAuthentication) {
+            $loggedInUser = HeaderAuth::checkBasicAuthentication($userProvider);
+            if (!$loggedInUser) {
+                exit($scim20->throwError(401, "Unauthorized"));
+            } else {
+                if (!$loggedInUser->hasGroup('Administrators')) {
+                    exit($scim20->throwError(403, "Forbidden"));
+                } 
+            }
+        }
 
         /* SCIM 2.0 */
         if (preg_match('/^(.*)\/scim\/v2\/Users\/[a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12}$/', @explode("?", $_SERVER['REQUEST_URI'])[0])) {

@@ -19,7 +19,7 @@ if (!$userProvider->exists('userName', 'Administrator')){
     $user1->setFamilyName('Last');
     $user1->setGivenName('Admin');
     $user1->setEmail('Administrator@voltcms.com');
-    $user1->setPassword('Administrator');
+    $user1->setPassword('daze4726DKAU!!!!');
     $user1->setGroups(array('Everyone', 'Administrators'));
     $user1 = $userProvider->create($user1);
 }
