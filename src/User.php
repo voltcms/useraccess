@@ -67,7 +67,6 @@ class User
     public function setUserName(string $userName)
     {
         if (!preg_match(Sanitizer::REGEX_NAME, $userName)) {
-            error_log('test:'.$userName);
             throw new Exception('EXCEPTION_INVALID_USER_NAME');
         }
         $this->userName = $userName;

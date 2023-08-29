@@ -148,7 +148,18 @@ class SCIM
     public function listUsers($options)
     {
         $payload = [];
-        $users = $this->userProvider->readAll();
+        if (array_key_exists('filter', $options)) {
+            list($attribute, $value) = explode(' eq ', $options['filter']);
+            if (str_starts_with($value, '"')) {
+                $value = substr($value, 1);
+            }
+            if (str_ends_with($value, '"')) {
+                $value = substr($value, 0, -1);
+            }
+            $users = $this->userProvider->find($attribute, $value);
+        } else {
+            $users = $this->userProvider->readAll();
+        }
         $payload['schemas'] = array('urn:ietf:params:scim:api:messages:2.0:ListResponse');
         $payload['totalResults'] = count($users);
         $payload['startIndex'] = 1;

@@ -121,7 +121,7 @@ class UserProviderTest extends TestCase
         $this->assertEquals(3, count($users));
 
         // $_SERVER[SessionAuth::HTTP_X_CSRF_TOKEN] = 'fetch';
-        $sessionAuth = SessionAuth::getInstance([$provider]);
+        $sessionAuth = SessionAuth::getInstance($provider);
         $this->assertNotEmpty($_SESSION[SessionAuth::UA_CSRF]);
         $this->assertFalse($sessionAuth->login('userid1', 'password1_xxx'));
         $this->assertFalse($sessionAuth->login('xxxxx', 'password1_xxx'));

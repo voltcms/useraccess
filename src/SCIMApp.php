@@ -68,26 +68,26 @@ class SCIMApp
                 $scim20->throwError(405, "The endpoint does not support the provided method.");
         } elseif (preg_match('/^(.*)\/scim\/v2\/Me?$/', @explode("?", $_SERVER['REQUEST_URI'])[0])) {
             if (in_array($_SERVER['REQUEST_METHOD'], array("GET", "POST", "PUT", "PATCH", "DELETE")))
-                $scim20->throwError(400, "The requested endpoint is not available.");
+                $scim20->throwError(404, "The requested endpoint is not available.");
             else
                 $scim20->throwError(405, "The endpoint does not support the provided method.");
         } elseif (preg_match('/^(.*)\/scim\/v2\/ResourceTypes?$/', @explode("?", $_SERVER['REQUEST_URI'])[0])) {
             if ($_SERVER['REQUEST_METHOD'] == "GET")
-                $scim20->throwError(400, "The requested endpoint is not available.");
+                $scim20->throwError(404, "The requested endpoint is not available.");
             else
                 $scim20->throwError(405, "The endpoint does not support the provided method.");
         } elseif (preg_match('/^(.*)\/scim\/v2\/Schemas?$/', @explode("?", $_SERVER['REQUEST_URI'])[0])) {
             if ($_SERVER['REQUEST_METHOD'] == "GET")
-                $scim20->throwError(400, "The requested endpoint is not available.");
+                $scim20->throwError(404, "The requested endpoint is not available.");
             else
                 $scim20->throwError(405, "The endpoint does not support the provided method.");
         } elseif (preg_match('/^(.*)\/scim\/v2\/Bulk?$/', @explode("?", $_SERVER['REQUEST_URI'])[0])) {
             if ($_SERVER['REQUEST_METHOD'] == "POST")
-                $scim20->throwError(400, "The requested endpoint is not available.");
+                $scim20->throwError(404, "The requested endpoint is not available.");
             else
                 $scim20->throwError(405, "The endpoint does not support the provided method.");
         } else {
-            $scim20->throwError(400, "The requested endpoint is not available.");
+            $scim20->throwError(404, "The requested endpoint is not available.");
         }
     }
 }
