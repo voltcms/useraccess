@@ -54,7 +54,7 @@ class UserProvider implements UserProviderInterface
             if ($this->exists($attribute, $id)) {
                 return $this->documentToEntry(self::$db->read($id)[0]);
             } else {
-                throw new Exception('EXCEPTION_USER_NOT_EXIST');
+                throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
             }
         } else {
             if ($this->exists($attribute, $value)) {
@@ -62,21 +62,11 @@ class UserProvider implements UserProviderInterface
                 if (count($result) == 1) {
                     return $result[0];
                 } else {
-                    throw new Exception('EXCEPTION_USER_NOT_EXIST');
+                    throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
                 }
             } else {
-                throw new Exception('EXCEPTION_USER_NOT_EXIST');
+                throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
             }
-        }
-    }
-
-    public function get(string $userName): User
-    {
-        $id = trim(strtolower($userName));
-        if ($this->exists('userName', $id)) {
-            return $this->documentToEntry(self::$db->read($id)[0]);
-        } else {
-            throw new Exception('EXCEPTION_USER_NOT_EXIST');
         }
     }
 
@@ -87,7 +77,7 @@ class UserProvider implements UserProviderInterface
         } else if (!empty($user->getEmail()) && !empty($this->find('email', $user->getEmail()))) {
             throw new Exception('EXCEPTION_DUPLICATE_EMAIL');
         } else {
-            $id = self::$db->create(null, $user->getAttributes());
+            $id = self::$db->create($user->getAttributes());
             return $this->documentToEntry(self::$db->read($id)[0]);
         }
     }
@@ -100,8 +90,8 @@ class UserProvider implements UserProviderInterface
 
     public function find(string $attributeName, string $attributeValue): array
     {
-        $search_key = trim($attributeName);
-        $search_value = trim($attributeValue);
+        $attributeName = trim($attributeName);
+        $attributeValue = trim($attributeValue);
         $items = self::$db->read(null, [
             $attributeName => $attributeValue,
         ]);
@@ -120,7 +110,7 @@ class UserProvider implements UserProviderInterface
             self::$db->update($user->getId(), $user->getAttributes());
             return $user;
         } else {
-            throw new Exception('EXCEPTION_USER_NOT_EXIST');
+            throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
         }
     }
 
@@ -130,7 +120,7 @@ class UserProvider implements UserProviderInterface
         if ($this->exists('id', $id)) {
             self::$db->delete($id);
         } else {
-            throw new Exception('EXCEPTION_USER_NOT_EXIST');
+            throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
         }
     }
 

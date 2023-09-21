@@ -4,8 +4,6 @@ namespace VoltCMS\UserAccess;
 
 use \Exception;
 
-// https://tools.ietf.org/html/rfc7643#section-8
-
 class User
 {
 
@@ -14,7 +12,7 @@ class User
     private $_id = '';
     private $_created = '';
     private $_modified = '';
-    private $schemas = ['urn:ietf:params:scim:schemas:core:2.0:User'];
+    private $schemas = [self::SCHEMA];
     private $userName = '';
     private $displayName = '';
     private $familyName = '';
@@ -52,8 +50,6 @@ class User
     //   }
 
     //////////////////////////////////////////////////
-
-    // public function __construct() {}
 
     public function getId(): string
     {

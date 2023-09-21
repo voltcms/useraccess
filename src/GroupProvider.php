@@ -6,7 +6,7 @@ use \Exception;
 use \VoltCMS\FileDB\FileDB;
 use \VoltCMS\Uuid\Uuid;
 
-class FileGroupProvider implements GroupProviderInterface
+class GroupProvider implements GroupProviderInterface 
 {
 
     private static $instance = null;
@@ -37,41 +37,50 @@ class FileGroupProvider implements GroupProviderInterface
         throw new Exception("Cannot unserialize Object");
     }
 
-    public function isIdExisting(string $id): bool
+    public function exists(string $attribute, string $value): bool
     {
-        $id = trim(strtolower($id));
-        return !empty(self::$db->read($id));
-    }
-
-    public function isNameExisting(string $groupName): bool
-    {
-        return $this->isIdExisting($groupName);
-    }
-
-    public function get(string $groupName): Group
-    {
-        $id = trim(strtolower($groupName));
-        if ($this->isIdExisting($id)) {
-            return $this->documentToEntry(self::$db->read($id)[0]);
+        if ($attribute == 'id') {
+            $id = trim(strtolower($value));
+            return !empty(self::$db->read($id));
         } else {
-            throw new Exception('EXCEPTION_GROUP_NOT_EXIST');
+            return !empty($this->find($attribute, $value));
+        }
+    }
+
+    public function read(string $attribute, string $value): Group
+    {
+        if ($attribute == 'id') {
+            $id = trim(strtolower($value));
+            if ($this->exists($attribute, $id)) {
+                return $this->documentToEntry(self::$db->read($id)[0]);
+            } else {
+                throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
+            }
+        } else {
+            if ($this->exists($attribute, $value)) {
+                $result = $this->find($attribute, $value);
+                if (count($result) == 1) {
+                    return $result[0];
+                } else {
+                    throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
+                }
+            } else {
+                throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
+            }
         }
     }
 
     public function create(Group $group): Group
     {
-        if ($this->isNameExisting($group->getGroupName())) {
+        if ($this->exists('displayName', $group->getDisplayName())) {
             throw new Exception('EXCEPTION_GROUP_ALREADY_EXIST');
         } else {
-            if (!$group->getId()) {
-                $group->setId(Uuid::generate());
-            }
-            $id = self::$db->create($group->getGroupName(), $group->getAttributes());
-            return $group;
+            $id = self::$db->create($group->getAttributes());
+            return $this->documentToEntry(self::$db->read($id)[0]);
         }
     }
 
-    public function getAll(): array
+    public function readAll(): array
     {
         $items = self::$db->readAll();
         return $this->documentsToEntries($items);
@@ -79,8 +88,8 @@ class FileGroupProvider implements GroupProviderInterface
 
     public function find(string $attributeName, string $attributeValue): array
     {
-        $search_key = trim($attributeName);
-        $search_value = trim($attributeValue);
+        $attributeName = trim($attributeName);
+        $attributeValue = trim($attributeValue);
         $items = self::$db->read(null, [
             $attributeName => $attributeValue,
         ]);
@@ -89,21 +98,21 @@ class FileGroupProvider implements GroupProviderInterface
 
     public function update(Group $group): Group
     {
-        if ($this->isIdExisting($group->getGroupName())) {
-            self::$db->update($group->getGroupName(), $group->getAttributes());
+        if ($this->exists('id', $group->getId())) {
+            self::$db->update($group->getId(), $group->getAttributes());
             return $group;
         } else {
-            throw new Exception('EXCEPTION_GROUP_NOT_EXIST');
+            throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
         }
     }
 
     public function delete(string $id)
     {
         $id = trim(strtolower($id));
-        if ($this->isIdExisting($id)) {
+        if ($this->exists('id', $id)) {
             self::$db->delete($id);
         } else {
-            throw new Exception('EXCEPTION_GROUP_NOT_EXIST');
+            throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
         }
     }
 

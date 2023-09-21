@@ -4,14 +4,15 @@ namespace VoltCMS\UserAccess;
 
 use \Exception;
 
-// https://tools.ietf.org/html/rfc7643#section-8
-
 class Group
 {
 
-    private $schemas = ['urn:ietf:params:scim:schemas:core:2.0:Group'];
-    private $id = '';
-    private $groupName = '';
+    CONST RESOURCE_TYPE = 'Group';
+    CONST SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:Group';
+    private $_id = '';
+    private $_created = '';
+    private $_modified = '';
+    private $schemas = [self::SCHEMA];
     private $displayName = '';
     private $members = [];
 
@@ -19,28 +20,7 @@ class Group
 
     public function getId(): string
     {
-        return $this->id;
-    }
-    public function setId(string $id)
-    {
-        $id = Sanitizer::sanitizeString($id);
-        if (!preg_match(Sanitizer::REGEX, $id)) {
-            throw new Exception('EXCEPTION_INVALID_GROUP_ID');
-        }
-        $this->id = $id;
-    }
-
-    public function getGroupName(): string
-    {
-        return $this->groupName;
-    }
-    public function setGroupName(string $groupName)
-    {
-        $groupName = Sanitizer::sanitizeString($groupName);
-        if (!preg_match(Sanitizer::REGEX, $groupName)) {
-            throw new Exception('EXCEPTION_INVALID_GROUP_NAME');
-        }
-        $this->groupName = $groupName;
+        return $this->_id;
     }
 
     public function getDisplayName(): string
@@ -72,14 +52,13 @@ class Group
     }
     public function addMember(string $member)
     {
-        $member = Sanitizer::sanitizeString($member);
         if ($member !== '' && !in_array($member, $this->members)) {
             $this->members[] = $member;
         }
     }
     public function removeMember(string $member)
     {
-        if (($key = array_search(Sanitizer::sanitizeString($member), $this->members)) !== false) {
+        if (($key = array_search($member, $this->members)) !== false) {
             unset($this->members[$key]);
         }
     }
@@ -87,26 +66,44 @@ class Group
     public function getAttributes(): array
     {
         $attributes = [];
+        $attributes['_id'] = $this->_id;
+        $attributes['_created'] = $this->_created;
+        $attributes['_modified'] = $this->_modified;
         $attributes['schemas'] = $this->schemas;
-        $attributes['id'] = $this->id;
-        $attributes['groupName'] = $this->groupName;
         $attributes['displayName'] = $this->displayName;
         $attributes['members'] = $this->members;
         return $attributes;
     }
 
-    public function toJson(): string
+    public function toSCIM(bool $includeEtagLastModified = false): array
     {
-        return json_encode($this->getAttributes());
+        $result = $this->getAttributes();
+        $etag = md5(json_encode($result));
+        $result['schemas'] = [self::SCHEMA];
+        $result['id'] = $result['_id'];
+        $result['meta'] = [
+            'resourceType' => self::RESOURCE_TYPE,
+            'created' => date(DATE_ATOM, $result['_created']),
+            'lastModified' => date(DATE_ATOM, $result['_modified']),
+            'version' => $etag,
+            'location' => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]" . str_replace("index.php", "", $_SERVER['SCRIPT_NAME']) . "scim/v2/Groups/" . $result['id']
+        ];
+        unset($result['_id']);
+        unset($result['_created']);
+        unset($result['_modified']);
+        if ($includeEtagLastModified) {
+            $result['etagLastModified'] = $result['_modified'];
+        }
+        return $result;
     }
 
     public function setAttributes(array $attributes)
     {
-        if (array_key_exists('id', $attributes)) {
-            $this->setId($attributes['id']);
+        if (array_key_exists('schemas', $attributes)) {
+            $this->schemas = $attributes['schemas'];
         }
-        if (array_key_exists('groupName', $attributes)) {
-            $this->setGroupName($attributes['groupName']);
+        if (array_key_exists('_id', $attributes)) {
+            $this->_id = $attributes['_id'];
         }
         if (array_key_exists('displayName', $attributes)) {
             $this->setDisplayName($attributes['displayName']);
@@ -114,6 +111,16 @@ class Group
         if (array_key_exists('members', $attributes)) {
             $this->setMembers($attributes['members']);
         }
+        if (array_key_exists('_created', $attributes)) {
+            $this->_created = $attributes['_created'];
+        }
+        if (array_key_exists('_modified', $attributes)) {
+            $this->_modified = $attributes['_modified'];
+        }
+    }
+
+    public function fromSCIM(array $attributes) {
+        $this->setAttributes($attributes);
     }
 
 }
