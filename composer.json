@@ -25,6 +25,7 @@
         }
     },
     "scripts": {
+        "build": "composer update --no-dev --optimize-autoloader --classmap-authoritative",
         "test": "./vendor/bin/phpunit"
     }
 }
