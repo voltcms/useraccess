@@ -11,6 +11,7 @@ class UserProvider implements UserProviderInterface
 
     private static $instance = null;
     private static $db;
+    private static $admins = [];
 
     public static function getInstance(array $config = null)
     {
@@ -49,21 +50,19 @@ class UserProvider implements UserProviderInterface
 
     public function read(string $attribute, string $value): User
     {
+        $value = trim($value);
         if ($attribute == 'id') {
-            $id = trim(strtolower($value));
-            if ($this->exists($attribute, $id)) {
-                return $this->documentToEntry(self::$db->read($id)[0]);
+            $id = strtolower($value);
+            $result = self::$db->read($id);
+            if (!empty($result)) {
+                return $this->documentToEntry($result[0]);
             } else {
                 throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
             }
         } else {
-            if ($this->exists($attribute, $value)) {
-                $result = $this->find($attribute, $value);
-                if (count($result) == 1) {
-                    return $result[0];
-                } else {
-                    throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
-                }
+            $result = $this->find($attribute, $value);
+            if (count($result) == 1) {
+                return $result[0];
             } else {
                 throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
             }
@@ -82,6 +81,18 @@ class UserProvider implements UserProviderInterface
         }
     }
 
+    public function createAdmin(string $userName, string $passwordHash): void
+    {
+        if (!empty($userName) && !empty($passwordHash)) {
+            if (!preg_match(Sanitizer::REGEX_NAME, $userName)) {
+                throw new Exception('EXCEPTION_INVALID_USER_NAME');
+            }
+            self::$admins[strtolower(trim($userName))] = trim($passwordHash);
+        } else {
+            throw new Exception('EXCEPTION_CREATE_ADMINISTRATOR');
+        }
+    }
+
     public function readAll(): array
     {
         $items = self::$db->readAll();
@@ -95,6 +106,16 @@ class UserProvider implements UserProviderInterface
         $items = self::$db->read(null, [
             $attributeName => $attributeValue,
         ]);
+        if (empty($items)) {
+            $attributeValue = strtolower($attributeValue);
+            if ($attributeName == "userName" && array_key_exists($attributeValue, self::$admins)) {
+                $admin = new User();
+                $admin->setUserName($attributeValue);
+                $admin->setDisplayName($attributeValue);
+                $admin->setPasswordHash(self::$admins[$attributeValue]);
+                return [$admin];
+            }
+        }
         return $this->documentsToEntries($items);
     }
 

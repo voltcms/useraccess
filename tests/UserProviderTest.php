@@ -13,67 +13,71 @@ class UserProviderTest extends TestCase
 
     public function test()
     {
-        $provider = UserProvider::getInstance(array('directory' => 'testdata/users'));
+        $userProvider = UserProvider::getInstance(array('directory' => 'testdata/users'));
         $groupProvider = GroupProvider::getInstance(array('directory' => 'testdata/groups'));
+
+        $userProvider->deleteAll();
+        $groupProvider->deleteAll();
+
         $everyoneGroup = new Group();
         $everyoneGroup->setDisplayName('Everyone');
         $everyoneGroup = $groupProvider->create($everyoneGroup);
-        $administratorsGroup = new Group();
-        $administratorsGroup->setDisplayName('Administrators');
-        $administratorsGroup = $groupProvider->create($administratorsGroup);
+        $adminsGroup = new Group();
+        $adminsGroup->setDisplayName('Administrators');
+        $adminsGroup = $groupProvider->create($adminsGroup);
         $this->assertTrue($groupProvider->exists('displayName', 'Everyone'));
         $this->assertTrue($groupProvider->exists('displayName', 'Administrators'));
 
-        if ($provider->exists('userName', 'userid1')) {
-            $user = $provider->read('userName', 'userid1');
-            $provider->delete($user->getId());
+        if ($userProvider->exists('userName', 'userid1')) {
+            $user = $userProvider->read('userName', 'userid1');
+            $userProvider->delete($user->getId());
         }
-        if ($provider->exists('userName', 'USERID_2')) {
-            $user = $provider->read('userName', 'USERID_2');
-            $provider->delete($user->getId());
+        if ($userProvider->exists('userName', 'USERID_2')) {
+            $user = $userProvider->read('userName', 'USERID_2');
+            $userProvider->delete($user->getId());
         }
-        $this->assertFalse($provider->exists('userName', 'userid1'));
-        $this->assertFalse($provider->exists('userName', 'USERID_2'));
+        $this->assertFalse($userProvider->exists('userName', 'userid1'));
+        $this->assertFalse($userProvider->exists('userName', 'USERID_2'));
 
         $user1 = new User();
         $user1->setUserName('userid1');
         $user1->setDisplayName('userid1 test');
         $user1->setEmail('userid1.test@test.com');
         $user1->setPassword('password1');
-        $user1 = $provider->create($user1);
+        $user1 = $userProvider->create($user1);
 
-        $administratorsGroup->addMember($user1->getId());
+        $adminsGroup->addMember($user1->getId());
         $everyoneGroup->addMember($user1->getId());
-        $groupProvider->update($administratorsGroup);
+        $groupProvider->update($adminsGroup);
         $groupProvider->update($everyoneGroup);
         $user2 = new User();
         $user2->setUserName('USERID_2');
         $user2->setDisplayName('USERID_2 test');
         $user2->setEmail('userid_2.test@test.com');
         $user2->setPassword('password2');
-        $user2 = $provider->create($user2);
+        $user2 = $userProvider->create($user2);
 
-        $administratorsGroup->addMember($user2->getId());
+        $adminsGroup->addMember($user2->getId());
         $everyoneGroup->addMember($user2->getId());
-        $groupProvider->update($administratorsGroup);
+        $groupProvider->update($adminsGroup);
         $groupProvider->update($everyoneGroup);
         $user3 = new User();
         $user3->setUserName('user');
         $user3->setDisplayName('user test');
         $user3->setEmail('user.test@test.com');
         $user3->setPassword('password1');
-        $user3 = $provider->create($user3);
+        $user3 = $userProvider->create($user3);
 
-        $administratorsGroup->addMember($user3->getId());
+        $adminsGroup->addMember($user3->getId());
         $everyoneGroup->addMember($user3->getId());
-        $groupProvider->update($administratorsGroup);
+        $groupProvider->update($adminsGroup);
         $groupProvider->update($everyoneGroup);
 
 
-        $this->assertTrue($provider->exists('userName', 'userid1'));
-        $this->assertTrue($provider->exists('userName', 'USERID_2'));
-        $user_test1 = $provider->read('id', $user1->getId());
-        $user_test2 = $provider->read('id', $user2->getId());
+        $this->assertTrue($userProvider->exists('userName', 'userid1'));
+        $this->assertTrue($userProvider->exists('userName', 'USERID_2'));
+        $user_test1 = $userProvider->read('id', $user1->getId());
+        $user_test2 = $userProvider->read('id', $user2->getId());
         $this->assertNotEmpty($user_test1);
         $this->assertNotEmpty($user_test2);
 
@@ -92,36 +96,36 @@ class UserProviderTest extends TestCase
         $this->assertTrue($user_test1->verifyPassword('password1'));
         $this->assertTrue($user_test2->verifyPassword('password2'));
 
-        $find = $provider->find('displayName', 'userid1 TEST ');
+        $find = $userProvider->find('displayName', 'userid1 TEST ');
         $this->assertNotEmpty($find);
         $this->assertEquals(1, count($find));
-        $find = $provider->find('email', 'userid1.test@test.com');
+        $find = $userProvider->find('email', 'userid1.test@test.com');
         $this->assertNotEmpty($find);
         $this->assertEquals(1, count($find));
-        $find = $provider->find('email', 'userid_2.test@test.com');
+        $find = $userProvider->find('email', 'userid_2.test@test.com');
         $this->assertNotEmpty($find);
         $this->assertEquals(1, count($find));
         $this->assertEquals('USERID_2', $find[0]->getUserName());
-        $find = $provider->find('displayName', '*USERID*');
+        $find = $userProvider->find('displayName', '*USERID*');
         $this->assertNotEmpty($find);
         $this->assertEquals(2, count($find));
 
-        $this->assertFalse($provider->exists('userName', 'userid3'));
+        $this->assertFalse($userProvider->exists('userName', 'userid3'));
         try {
-            $provider->read('userName', 'userid3');
+            $userProvider->read('userName', 'userid3');
         } catch (Exception $e) {
             $this->assertNotEmpty($e);
         }
 
-        $user_test1 = $provider->read('id', $user1->getId());
+        $user_test1 = $userProvider->read('id', $user1->getId());
         $user_test1->setDisplayName('userid1 test update');
         $user_test1->setPasswordHash(User::hashPassword('password1_update'));
         $user_test1->setEmail('userid1.test_update@test.com');
-        $user_test1 = $provider->update($user_test1);
+        $user_test1 = $userProvider->update($user_test1);
 
-        $administratorsGroup = $groupProvider->read('displayName', 'Administrators');
-        $administratorsGroup->addMember($user_test1->getId());
-        $user_test1 = $provider->read('id', $user_test1->getId());
+        $adminsGroup = $groupProvider->read('displayName', 'Administrators');
+        $adminsGroup->addMember($user_test1->getId());
+        $user_test1 = $userProvider->read('id', $user_test1->getId());
         $this->assertEquals('userid1', $user_test1->getUserName());
         $this->assertEquals('userid1.test_update@test.com', $user_test1->getEmail());
         $this->assertFalse($user_test1->verifyPassword('password1'));
@@ -130,21 +134,21 @@ class UserProviderTest extends TestCase
 
         // delete attribute test
         $user_test1->setDisplayName('');
-        $provider->update($user_test1);
-        $user_test1 = $provider->read('id', $user_test1->getId());
+        $userProvider->update($user_test1);
+        $user_test1 = $userProvider->read('id', $user_test1->getId());
         $this->assertEquals('', $user_test1->getDisplayName());
         $user_test1->setDisplayName('userid1 test');
-        $provider->update($user_test1);
-        $user_test1 = $provider->read('id', $user_test1->getId());
+        $userProvider->update($user_test1);
+        $user_test1 = $userProvider->read('id', $user_test1->getId());
         $this->assertEquals('userid1 test', $user_test1->getDisplayName());
-        $provider->update($user_test1);
+        $userProvider->update($user_test1);
 
-        $users = $provider->readAll();
+        $users = $userProvider->readAll();
         $this->assertNotEmpty($users);
         $this->assertEquals(3, count($users));
 
         // $_SERVER[SessionAuth::HTTP_X_CSRF_TOKEN] = 'fetch';
-        $sessionAuth = SessionAuth::getInstance($provider);
+        $sessionAuth = SessionAuth::getInstance($userProvider);
         $this->assertNotEmpty($_SESSION[SessionAuth::UA_CSRF]);
         $this->assertFalse($sessionAuth->login('userid1', 'password1_xxx'));
         $this->assertFalse($sessionAuth->login('xxxxx', 'password1_xxx'));
@@ -176,12 +180,17 @@ class UserProviderTest extends TestCase
         $this->assertEquals($_SESSION[SessionAuth::UA_DISPLAYNAME], 'userid1 test');
         $this->assertEquals($_SESSION[SessionAuth::UA_EMAIL], 'userid1.test_update@test.com');
         $this->assertNotEmpty($sessionAuth->getLoginInfo());
+        $sessionAuth->logOut();
 
         // $this->assertFalse($user_test1->verifyPassword('password1'));
         // $this->assertTrue($user_test1->verifyPassword('password1_update'));
         // $this->assertTrue($user_test1->getGroups() == ['Administrators']);
 
-        $provider->deleteAll();
+        $userProvider->createAdmin("admin", "$2a$12$4R0ElCmlqesGeskNAFMl3uC/MHICdIzgk374991FNXqZJkF2iDQ.6");
+        $this->assertTrue($sessionAuth->login('admin', 'admin', $_SESSION[SessionAuth::UA_CSRF]));
+        $sessionAuth->logOut();
+
+        $userProvider->deleteAll();
         $groupProvider->deleteAll();
     }
 

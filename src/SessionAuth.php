@@ -128,8 +128,10 @@ class SessionAuth
                 return $users[0];
             }
         } else {
-            if ($userProvider->exists('userName', $userName)) {
+            try {
                 return $userProvider->read('userName', $userName);
+            } catch (Exception $e) {
+                return null;
             }
         }
         return null;

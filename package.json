@@ -19,7 +19,7 @@
   },
   "homepage": "https://github.com/voltcms/useraccess#readme",
   "dependencies": {
-    "bootbox": "^5.4.0",
+    "bootbox": "^6",
     "bootstrap": "^5",
     "font-awesome": "^4.7.0",
     "jquery": "^3",
