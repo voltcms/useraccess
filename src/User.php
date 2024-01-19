@@ -20,7 +20,6 @@ class User
     private $email = '';
     private $active = true;
     private $passwordHash = '';
-    private $groups = [];
     private $loginAttempts = 0;
 
     // "emails": [
@@ -145,34 +144,17 @@ class User
         return \password_verify(trim($password), $this->passwordHash);
     }
 
-    public function getGroups(): array
+    public function isMemberOf(string $group): bool
     {
-        return $this->groups;
-    }
-    public function addGroups(array $groups)
-    {
-        foreach ($groups as $group) {
-            $this->addGroup($group);
-        }
-    }
-    public function setGroups(array $groups)
-    {
-        $this->groups = Sanitizer::sanitizeArray($groups);
-    }
-    public function hasGroup(string $group): bool
-    {
-        return in_array(Sanitizer::sanitizeString($group), $this->groups);
-    }
-    public function addGroup(string $group)
-    {
-        if ($group !== '' && !in_array($group, $this->groups)) {
-            $this->groups[] = $group;
-        }
-    }
-    public function removeGroup(string $group)
-    {
-        if (($key = array_search($group, $this->groups)) !== false) {
-            unset($this->groups[$key]);
+        $groupProvider = GroupProvider::getInstance();
+        if ($groupProvider->exists('displayName', $group)) {
+            $group = $groupProvider->read('displayName', $group);
+            return $group->hasMember($this->_id);
+        } else if ($groupProvider->exists('id', $group)) {
+            $group = $groupProvider->read('id', $group);
+            return $group->hasMember($this->_id);
+        } else {
+            return false;
         }
     }
 
@@ -199,7 +181,6 @@ class User
         $attributes['email'] = $this->email;
         $attributes['active'] = $this->active;
         $attributes['passwordHash'] = $this->passwordHash;
-        $attributes['groups'] = $this->groups;
         $attributes['loginAttempts'] = $this->loginAttempts;
         return $attributes;
     }
@@ -286,9 +267,6 @@ class User
         }
         if (array_key_exists('loginAttempts', $attributes)) {
             $this->setLoginAttempts($attributes['loginAttempts']);
-        }
-        if (array_key_exists('groups', $attributes)) {
-            $this->setGroups($attributes['groups']);
         }
         if (array_key_exists('_created', $attributes)) {
             $this->_created = $attributes['_created'];

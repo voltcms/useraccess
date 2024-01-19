@@ -142,7 +142,7 @@ class SessionAuth
             $_SESSION[self::UA_USERNAME] = $user->getUserName();
             $_SESSION[self::UA_DISPLAYNAME] = $user->getDisplayName();
             $_SESSION[self::UA_EMAIL] = $user->getEmail();
-            $_SESSION[self::UA_GROUPS] = $user->getGroups();
+            // $_SESSION[self::UA_GROUPS] = $user->getGroups();
         } else {
             $_SESSION[self::UA_AUTH] = false;
             $_SESSION[self::UA_USERNAME] = '';

@@ -1,7 +1,9 @@
 <?php
 
 use \PHPUnit\Framework\TestCase;
+use \VoltCMS\UserAccess\Group;
 use \VoltCMS\UserAccess\UserProvider;
+use \VoltCMS\UserAccess\GroupProvider;
 use \VoltCMS\UserAccess\SessionAuth;
 use \VoltCMS\UserAccess\User;
 use \VoltCMS\UserAccess\UserProviderInterface;
@@ -11,12 +13,17 @@ class UserProviderTest extends TestCase
 
     public function test()
     {
-        $this->performTest(UserProvider::getInstance(array('directory' => 'testdata/users')));
-    }
+        $provider = UserProvider::getInstance(array('directory' => 'testdata/users'));
+        $groupProvider = GroupProvider::getInstance(array('directory' => 'testdata/groups'));
+        $everyoneGroup = new Group();
+        $everyoneGroup->setDisplayName('Everyone');
+        $everyoneGroup = $groupProvider->create($everyoneGroup);
+        $administratorsGroup = new Group();
+        $administratorsGroup->setDisplayName('Administrators');
+        $administratorsGroup = $groupProvider->create($administratorsGroup);
+        $this->assertTrue($groupProvider->exists('displayName', 'Everyone'));
+        $this->assertTrue($groupProvider->exists('displayName', 'Administrators'));
 
-    public function performTest(UserProviderInterface $provider)
-    {
-        $provider->deleteAll();
         if ($provider->exists('userName', 'userid1')) {
             $user = $provider->read('userName', 'userid1');
             $provider->delete($user->getId());
@@ -33,23 +40,35 @@ class UserProviderTest extends TestCase
         $user1->setDisplayName('userid1 test');
         $user1->setEmail('userid1.test@test.com');
         $user1->setPassword('password1');
-        $user1->setGroups(array('Everyone', 'Administrators'));
+        $user1 = $provider->create($user1);
+
+        $administratorsGroup->addMember($user1->getId());
+        $everyoneGroup->addMember($user1->getId());
+        $groupProvider->update($administratorsGroup);
+        $groupProvider->update($everyoneGroup);
         $user2 = new User();
         $user2->setUserName('USERID_2');
         $user2->setDisplayName('USERID_2 test');
         $user2->setEmail('userid_2.test@test.com');
         $user2->setPassword('password2');
-        $user2->setGroups(array('Everyone', 'Administrators'));
+        $user2 = $provider->create($user2);
+
+        $administratorsGroup->addMember($user2->getId());
+        $everyoneGroup->addMember($user2->getId());
+        $groupProvider->update($administratorsGroup);
+        $groupProvider->update($everyoneGroup);
         $user3 = new User();
         $user3->setUserName('user');
         $user3->setDisplayName('user test');
         $user3->setEmail('user.test@test.com');
         $user3->setPassword('password1');
-        $user3->setGroups(array('Everyone', 'Administrators'));
-
-        $user1 = $provider->create($user1);
-        $user2 = $provider->create($user2);
         $user3 = $provider->create($user3);
+
+        $administratorsGroup->addMember($user3->getId());
+        $everyoneGroup->addMember($user3->getId());
+        $groupProvider->update($administratorsGroup);
+        $groupProvider->update($everyoneGroup);
+
 
         $this->assertTrue($provider->exists('userName', 'userid1'));
         $this->assertTrue($provider->exists('userName', 'USERID_2'));
@@ -61,13 +80,15 @@ class UserProviderTest extends TestCase
         $this->assertEquals('userid1', $user_test1->getUserName());
         $this->assertEquals('userid1.test@test.com', $user_test1->getEmail());
         // $this->assertEquals(['userid1.test@test.com'], $user_test1->getEmails());
-        $this->assertTrue($user_test1->getGroups() == ['everyone', 'administrators']);
-        $this->assertFalse($user_test1->getGroups() == ['Guests']);
+        $this->assertTrue($user_test1->isMemberOf('everyone'));
+        $this->assertTrue($user_test1->isMemberOf('administrators'));
+        $this->assertFalse($user_test1->isMemberOf('Guests'));
         $this->assertEquals('USERID_2', $user_test2->getUserName());
         $this->assertEquals('userid_2.test@test.com', $user_test2->getEmail());
         // $this->assertEquals(['userid_2.test@test.com'], $user_test2->getEmails());
-        $this->assertTrue($user_test2->getGroups() == ['everyone', 'administrators']);
-        $this->assertFalse($user_test2->getGroups() == ['Guests']);
+        $this->assertTrue($user_test2->isMemberOf('everyone'));
+        $this->assertTrue($user_test2->isMemberOf('administrators'));
+        $this->assertFalse($user_test2->isMemberOf('Guests'));
         $this->assertTrue($user_test1->verifyPassword('password1'));
         $this->assertTrue($user_test2->verifyPassword('password2'));
 
@@ -96,14 +117,16 @@ class UserProviderTest extends TestCase
         $user_test1->setDisplayName('userid1 test update');
         $user_test1->setPasswordHash(User::hashPassword('password1_update'));
         $user_test1->setEmail('userid1.test_update@test.com');
-        $user_test1->setGroups(['Administrators']);
         $user_test1 = $provider->update($user_test1);
+
+        $administratorsGroup = $groupProvider->read('displayName', 'Administrators');
+        $administratorsGroup->addMember($user_test1->getId());
         $user_test1 = $provider->read('id', $user_test1->getId());
         $this->assertEquals('userid1', $user_test1->getUserName());
         $this->assertEquals('userid1.test_update@test.com', $user_test1->getEmail());
         $this->assertFalse($user_test1->verifyPassword('password1'));
         $this->assertTrue($user_test1->verifyPassword('password1_update'));
-        $this->assertTrue($user_test1->getGroups() == ['administrators']);
+        $this->assertTrue($user_test1->isMemberOf('administrators'));
 
         // delete attribute test
         $user_test1->setDisplayName('');
@@ -138,7 +161,6 @@ class UserProviderTest extends TestCase
         $this->assertEquals($_SESSION[SessionAuth::UA_USERNAME], 'userid1');
         $this->assertEquals($_SESSION[SessionAuth::UA_DISPLAYNAME], 'userid1 test');
         $this->assertEquals($_SESSION[SessionAuth::UA_EMAIL], 'userid1.test_update@test.com');
-        $this->assertTrue($_SESSION[SessionAuth::UA_GROUPS] == ['administrators']);
         $this->assertNotEmpty($sessionAuth->getLoginInfo());
         $sessionAuth->logOut();
         $this->assertFalse($_SESSION[SessionAuth::UA_AUTH]);
@@ -153,7 +175,6 @@ class UserProviderTest extends TestCase
         $this->assertEquals($_SESSION[SessionAuth::UA_USERNAME], 'userid1');
         $this->assertEquals($_SESSION[SessionAuth::UA_DISPLAYNAME], 'userid1 test');
         $this->assertEquals($_SESSION[SessionAuth::UA_EMAIL], 'userid1.test_update@test.com');
-        $this->assertTrue($_SESSION[SessionAuth::UA_GROUPS] == ['administrators']);
         $this->assertNotEmpty($sessionAuth->getLoginInfo());
 
         // $this->assertFalse($user_test1->verifyPassword('password1'));
@@ -161,6 +182,7 @@ class UserProviderTest extends TestCase
         // $this->assertTrue($user_test1->getGroups() == ['Administrators']);
 
         $provider->deleteAll();
+        $groupProvider->deleteAll();
     }
 
 }

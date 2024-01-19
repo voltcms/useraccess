@@ -52,7 +52,10 @@ class Group
     }
     public function addMember(string $member)
     {
-        if ($member !== '' && !in_array($member, $this->members)) {
+        if ($member == '') {
+            throw new Exception('EXCEPTION_EMPTY_ID');
+        }
+        if (!in_array($member, $this->members)) {
             $this->members[] = $member;
         }
     }
