@@ -13,7 +13,6 @@ class SessionAuth
     const UA_USERNAME = 'UA_USERNAME';
     const UA_DISPLAYNAME = 'UA_DISPLAYNAME';
     const UA_EMAIL = 'UA_EMAIL';
-    const UA_GROUPS = 'UA_GROUPS';
     const UA_ATTEMPTS = 'UA_ATTEMPTS';
     const UA_REFRESH = 'UA_REFRESH';
     const UA_CSRF = 'X-CSRF-Token';
@@ -82,9 +81,6 @@ class SessionAuth
             if (!array_key_exists(self::UA_EMAIL, $_SESSION)) {
                 $_SESSION[self::UA_EMAIL] = '';
             }
-            if (!array_key_exists(self::UA_GROUPS, $_SESSION)) {
-                $_SESSION[self::UA_GROUPS] = [];
-            }
             if (!array_key_exists(self::UA_ATTEMPTS, $_SESSION)) {
                 $_SESSION[self::UA_ATTEMPTS] = 0;
             }
@@ -144,13 +140,11 @@ class SessionAuth
             $_SESSION[self::UA_USERNAME] = $user->getUserName();
             $_SESSION[self::UA_DISPLAYNAME] = $user->getDisplayName();
             $_SESSION[self::UA_EMAIL] = $user->getEmail();
-            // $_SESSION[self::UA_GROUPS] = $user->getGroups();
         } else {
             $_SESSION[self::UA_AUTH] = false;
             $_SESSION[self::UA_USERNAME] = '';
             $_SESSION[self::UA_DISPLAYNAME] = '';
             $_SESSION[self::UA_EMAIL] = '';
-            $_SESSION[self::UA_GROUPS] = [];
         }
         $_SESSION[self::UA_ATTEMPTS] = $loginAttempts;
         $_SESSION[self::UA_REFRESH] = self::$instance->now;
@@ -199,7 +193,6 @@ class SessionAuth
         return [
             self::UA_AUTH => $_SESSION[self::UA_AUTH],
             self::UA_USERNAME => $_SESSION[self::UA_USERNAME],
-            self::UA_GROUPS => $_SESSION[self::UA_GROUPS],
             self::UA_ATTEMPTS => $_SESSION[self::UA_ATTEMPTS],
             self::UA_REFRESH => $_SESSION[self::UA_REFRESH],
         ];
@@ -247,20 +240,20 @@ class SessionAuth
         }
     }
 
-    public function isMemberOfGroup($required_groups)
+    public function isMemberOfGroup($required_group)
     {
-        $required_groups = Sanitizer::sanitizeStringToArray($required_groups);
-        if (!empty($required_groups[0]) && empty(array_intersect($required_groups, $_SESSION[self::UA_GROUPS]))) {
-            return false;
-        } else {
+        $required_groups = Sanitizer::sanitizeString($required_group);
+        if (!empty($required_groups[0]) && self::$instance->loggedInUser->isMemberOf($required_group)) {
             return true;
+        } else {
+            return false;
         }
     }
 
-    public function enforceMemberOfGroup($required_groups)
+    public function enforceMemberOfGroup($required_group)
     {
         $this->enforceLoggedIn();
-        if (!$this->isMemberOfGroup($required_groups)) {
+        if (!$this->isMemberOfGroup($required_group)) {
             http_response_code(401);
             $this->echoJsonLoginInfo();
             exit();

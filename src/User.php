@@ -21,6 +21,7 @@ class User
     private $active = true;
     private $passwordHash = '';
     private $loginAttempts = 0;
+    private $admin = false;
 
     // "emails": [
     //     {
@@ -146,6 +147,9 @@ class User
 
     public function isMemberOf(string $group): bool
     {
+        if ($this->admin) {
+            return true;
+        }
         $groupProvider = GroupProvider::getInstance();
         if ($groupProvider->exists('displayName', $group)) {
             $group = $groupProvider->read('displayName', $group);
@@ -165,6 +169,19 @@ class User
     public function setLoginAttempts(int $loginAttempts)
     {
         $this->loginAttempts = $loginAttempts;
+    }
+
+    public function getAdmin(): bool
+    {
+        return $this->admin;
+    }
+    public function isAdmin(): bool
+    {
+        return $this->admin;
+    }
+    public function setAdmin(bool $admin)
+    {
+        $this->admin = $admin;
     }
 
     public function getAttributes(): array

@@ -113,6 +113,7 @@ class UserProvider implements UserProviderInterface
                 $admin->setUserName($attributeValue);
                 $admin->setDisplayName($attributeValue);
                 $admin->setPasswordHash(self::$admins[$attributeValue]);
+                $admin->setAdmin(true);
                 return [$admin];
             }
         }

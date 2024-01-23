@@ -157,9 +157,11 @@ class UserProviderTest extends TestCase
         $this->assertEquals($_SESSION[SessionAuth::UA_ATTEMPTS], 3);
         $this->assertFalse($_SESSION[SessionAuth::UA_AUTH]);
         $this->assertEquals($_SESSION[SessionAuth::UA_USERNAME], '');
-        $this->assertTrue($_SESSION[SessionAuth::UA_GROUPS] == []);
         $this->assertTrue($sessionAuth->login('userid1', 'password1_update', $_SESSION[SessionAuth::UA_CSRF]));
         $this->assertTrue($sessionAuth->isLoggedIn());
+        $this->assertTrue($sessionAuth->isMemberOfGroup('everyone'));
+        $this->assertTrue($sessionAuth->isMemberOfGroup('administrators'));
+        $this->assertFalse($sessionAuth->isMemberOfGroup('Guests'));
         $this->assertEquals($_SESSION[SessionAuth::UA_ATTEMPTS], 0);
         $this->assertTrue($_SESSION[SessionAuth::UA_AUTH]);
         $this->assertEquals($_SESSION[SessionAuth::UA_USERNAME], 'userid1');
@@ -169,7 +171,6 @@ class UserProviderTest extends TestCase
         $sessionAuth->logOut();
         $this->assertFalse($_SESSION[SessionAuth::UA_AUTH]);
         $this->assertEquals($_SESSION[SessionAuth::UA_USERNAME], '');
-        $this->assertTrue($_SESSION[SessionAuth::UA_GROUPS] == []);
         $this->assertNotEmpty($sessionAuth->getLoginInfo());
 
         $this->assertTrue($sessionAuth->login('userid1.TEST_UPDATE@test.com', 'password1_update', $_SESSION[SessionAuth::UA_CSRF]));
@@ -188,6 +189,12 @@ class UserProviderTest extends TestCase
 
         $userProvider->createAdmin("admin", "$2a$12$4R0ElCmlqesGeskNAFMl3uC/MHICdIzgk374991FNXqZJkF2iDQ.6");
         $this->assertTrue($sessionAuth->login('admin', 'admin', $_SESSION[SessionAuth::UA_CSRF]));
+        $this->assertEquals($_SESSION[SessionAuth::UA_ATTEMPTS], 0);
+        $this->assertTrue($_SESSION[SessionAuth::UA_AUTH]);
+        $this->assertEquals($_SESSION[SessionAuth::UA_USERNAME], 'admin');
+        $this->assertEquals($_SESSION[SessionAuth::UA_DISPLAYNAME], 'admin');
+        $this->assertEquals($_SESSION[SessionAuth::UA_EMAIL], '');
+        $this->assertTrue($sessionAuth->isMemberOfGroup('administrators'));
         $sessionAuth->logOut();
 
         $userProvider->deleteAll();
