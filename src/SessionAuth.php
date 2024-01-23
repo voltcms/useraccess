@@ -124,10 +124,9 @@ class SessionAuth
                 return $users[0];
             }
         } else {
-            try {
-                return $userProvider->read('userName', $userName);
-            } catch (Exception $e) {
-                return null;
+            $users = $userProvider->find('userName', $userName);
+            if (!empty($users) && count($users) == 1) {
+                return $users[0];
             }
         }
         return null;
@@ -233,7 +232,7 @@ class SessionAuth
             if ($this->loggedInUser !== null) {
                 return $this->loggedInUser;
             } else {
-                $this->get($_SESSION[self::UA_USERNAME]);
+                return $this->get($_SESSION[self::UA_USERNAME]);
             }
         } else {
             return null;
@@ -243,7 +242,8 @@ class SessionAuth
     public function isMemberOfGroup($required_group)
     {
         $required_groups = Sanitizer::sanitizeString($required_group);
-        if (!empty($required_groups[0]) && self::$instance->loggedInUser->isMemberOf($required_group)) {
+        $loggedInUser = $this->getLoggedInUser();
+        if (!empty($required_groups[0]) && $loggedInUser && $loggedInUser->isMemberOf($required_group)) {
             return true;
         } else {
             return false;
