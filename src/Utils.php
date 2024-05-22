@@ -5,14 +5,19 @@ namespace VoltCMS\UserAccess;
 class Utils
 {
 
+    const ACCESS_STATUS_EVERYONE = 'everyone';
+    const ACCESS_STATUS_LOGGED_IN = 'logged_in';
+    const ACCESS_STATUS_LOGGED_IN_MEMBER_OF_GROUP = 'logged_in_member_of_group';
+    const ACCESS_STATUS_LOGGED_IN_NOT_MEMBER_OF_GROUP = 'logged_in_member_of_group';
+
     public static function isContentVisible($sessionAuth, $user_status, $logged_in_member_of_group, $logged_in_not_member_of_group)
     {
-        if ($user_status === 'everyone') {
+        if ($user_status === Utils::ACCESS_STATUS_EVERYONE) {
             return true;
         }
-        $loggedIn = (substr($user_status, 0, 9) === 'logged_in');
-        $memberOfGroup = ($user_status === 'logged_in_member_of_group');
-        $notMemberOfGroup = ($user_status === 'logged_in_not_member_of_group');
+        $loggedIn = (substr($user_status, 0, 9) === Utils::ACCESS_STATUS_LOGGED_IN);
+        $memberOfGroup = ($user_status === Utils::ACCESS_STATUS_LOGGED_IN_MEMBER_OF_GROUP);
+        $notMemberOfGroup = ($user_status === Utils::ACCESS_STATUS_LOGGED_IN_NOT_MEMBER_OF_GROUP);
         // user must be logged in
         if ($loggedIn && $sessionAuth->isLoggedIn()) {
             if (!$memberOfGroup && !$notMemberOfGroup) {
@@ -36,7 +41,7 @@ class Utils
         if ($user_status === 'everyone') {
             return;
         }
-        $memberOfGroup = ($user_status === 'logged_in_member_of_group');
+        $memberOfGroup = ($user_status === Utils::ACCESS_STATUS_LOGGED_IN_MEMBER_OF_GROUP);
         $login_redirect = self::getBoolean($login_redirect);
         $forbidden_redirect = self::getBoolean($forbidden_redirect);
         $forbidden = false;
