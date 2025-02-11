@@ -4,14 +4,12 @@ namespace VoltCMS\UserAccess;
 
 use \Exception;
 use \VoltCMS\FileDB\FileDB;
-use \VoltCMS\Uuid\Uuid;
 
 class UserProvider implements UserProviderInterface
 {
 
     private static $instance = null;
     private static $db;
-    private static $admins = [];
 
     public static function getInstance(array $config = null)
     {
@@ -81,18 +79,6 @@ class UserProvider implements UserProviderInterface
         }
     }
 
-    public function createAdmin(string $userName, string $passwordHash): void
-    {
-        if (!empty($userName) && !empty($passwordHash)) {
-            if (!preg_match(Sanitizer::REGEX_NAME, $userName)) {
-                throw new Exception('EXCEPTION_INVALID_USER_NAME');
-            }
-            self::$admins[strtolower(trim($userName))] = trim($passwordHash);
-        } else {
-            throw new Exception('EXCEPTION_CREATE_ADMINISTRATOR');
-        }
-    }
-
     public function readAll(): array
     {
         $items = self::$db->readAll();
@@ -106,17 +92,6 @@ class UserProvider implements UserProviderInterface
         $items = self::$db->read(null, [
             $attributeName => $attributeValue,
         ]);
-        if (empty($items)) {
-            $attributeValue = strtolower($attributeValue);
-            if ($attributeName == "userName" && array_key_exists($attributeValue, self::$admins)) {
-                $admin = new User();
-                $admin->setUserName($attributeValue);
-                $admin->setDisplayName($attributeValue);
-                $admin->setPasswordHash(self::$admins[$attributeValue]);
-                $admin->setAdmin(true);
-                return [$admin];
-            }
-        }
         return $this->documentsToEntries($items);
     }
 
@@ -138,6 +113,7 @@ class UserProvider implements UserProviderInterface
 
     public function delete(string $id)
     {
+        // todo delete user membership of groups
         $id = trim(strtolower($id));
         if ($this->exists('id', $id)) {
             self::$db->delete($id);

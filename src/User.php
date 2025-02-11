@@ -31,22 +31,13 @@ class User
     //     }
     //   ]
 
-    // "groups": [
-    //     {
-    //       "value": "e9e30dba-f08f-4109-8486-d5c6a331660a",
-    //       "$ref":
-    // "https://example.com/v2/Groups/e9e30dba-f08f-4109-8486-d5c6a331660a",
-    //       "display": "Tour Guides"
-    //     }
-    //   ]
-
     // "meta": {
     //     "resourceType": "User",
     //     "created": "2010-01-23T04:56:22Z",
     //     "lastModified": "2011-05-13T04:42:34Z",
     //     "version": "W\/\"3694e05e9dff590\"",
     //     "location":
-    //      "https://example.com/v2/Users/2819c223-7f76-453a-919d-413861904646"
+    //      "https://example.com/Users/2819c223-7f76-453a-919d-413861904646"
     //   }
 
     //////////////////////////////////////////////////
@@ -60,6 +51,7 @@ class User
     {
         return $this->userName;
     }
+ 
     public function setUserName(string $userName)
     {
         if (!preg_match(Sanitizer::REGEX_NAME, $userName)) {
@@ -72,6 +64,7 @@ class User
     {
         return $this->displayName;
     }
+ 
     public function setDisplayName(string $displayName)
     {
         $this->displayName = trim($displayName);
@@ -81,6 +74,7 @@ class User
     {
         return $this->familyName;
     }
+ 
     public function setFamilyName(string $familyName)
     {
         $this->familyName = trim($familyName);
@@ -90,6 +84,7 @@ class User
     {
         return $this->givenName;
     }
+ 
     public function setGivenName(string $givenName)
     {
         $this->givenName = trim($givenName);
@@ -99,6 +94,7 @@ class User
     {
         return $this->email;
     }
+ 
     public function setEmail(string $email)
     {
         $email = trim(strtolower($email));
@@ -107,6 +103,7 @@ class User
         }
         $this->email = $email;
     }
+ 
     public function getEmails(): array
     {
         return [$this->getEmail()];
@@ -116,10 +113,12 @@ class User
     {
         return $this->active;
     }
+ 
     public function isActive(): bool
     {
         return $this->active;
     }
+ 
     public function setActive(bool $active)
     {
         $this->active = $active;
@@ -129,10 +128,12 @@ class User
     {
         $this->passwordHash = self::hashPassword(trim($password));
     }
+ 
     public function setPasswordHash(string $passwordHash)
     {
         $this->passwordHash = trim($passwordHash);
     }
+ 
     public static function hashPassword(string $password): string
     {
         if (empty($password)) {
@@ -140,6 +141,7 @@ class User
         }
         return \password_hash($password, PASSWORD_DEFAULT);
     }
+ 
     public function verifyPassword(string $password): bool
     {
         return \password_verify(trim($password), $this->passwordHash);
@@ -147,9 +149,6 @@ class User
 
     public function isMemberOf(string $group): bool
     {
-        if ($this->admin) {
-            return true;
-        }
         $groupProvider = GroupProvider::getInstance();
         if ($groupProvider->exists('displayName', $group)) {
             $group = $groupProvider->read('displayName', $group);
@@ -166,22 +165,20 @@ class User
     {
         return $this->loginAttempts;
     }
+
     public function setLoginAttempts(int $loginAttempts)
     {
         $this->loginAttempts = $loginAttempts;
     }
 
-    public function getAdmin(): bool
-    {
-        return $this->admin;
-    }
     public function isAdmin(): bool
     {
-        return $this->admin;
+        return $this->isMemberOf('Administrators');
     }
-    public function setAdmin(bool $admin)
+
+    public function getLocation(): string
     {
-        $this->admin = $admin;
+        return (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]" . str_replace("index.php", "", $_SERVER['SCRIPT_NAME']) . "scim/users/" . $this->_id;
     }
 
     public function getAttributes(): array
@@ -222,8 +219,11 @@ class User
             'created' => date(DATE_ATOM, $result['_created']),
             'lastModified' => date(DATE_ATOM, $result['_modified']),
             'version' => $etag,
-            'location' => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]" . str_replace("index.php", "", $_SERVER['SCRIPT_NAME']) . "scim/v2/Users/" . $result['id']
+            'location' => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]" . str_replace("index.php", "", $_SERVER['SCRIPT_NAME']) . "scim/users/" . $result['id']
         ];
+        if ($includeEtagLastModified) {
+            $result['etagLastModified'] = $result['_modified'];
+        }
         unset($result['_id']);
         unset($result['_created']);
         unset($result['_modified']);
@@ -232,9 +232,6 @@ class User
         unset($result['email']);
         unset($result['passwordHash']);
         unset($result['loginAttempts']);
-        if ($includeEtagLastModified) {
-            $result['etagLastModified'] = $result['_modified'];
-        }
         return $result;
     }
 

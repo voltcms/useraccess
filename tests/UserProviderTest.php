@@ -22,12 +22,10 @@ class UserProviderTest extends TestCase
         $everyoneGroup = new Group();
         $everyoneGroup->setDisplayName('Everyone');
         $everyoneGroup = $groupProvider->create($everyoneGroup);
-        $adminsGroup = new Group();
-        $adminsGroup->setDisplayName('Administrators');
-        $adminsGroup = $groupProvider->create($adminsGroup);
         $this->assertTrue($groupProvider->exists('displayName', 'Everyone'));
         $this->assertTrue($groupProvider->exists('displayName', 'Administrators'));
-
+        $adminsGroup = $groupProvider->read('displayName', 'Administrators');
+        
         if ($userProvider->exists('userName', 'userid1')) {
             $user = $userProvider->read('userName', 'userid1');
             $userProvider->delete($user->getId());
@@ -186,16 +184,6 @@ class UserProviderTest extends TestCase
         // $this->assertFalse($user_test1->verifyPassword('password1'));
         // $this->assertTrue($user_test1->verifyPassword('password1_update'));
         // $this->assertTrue($user_test1->getGroups() == ['Administrators']);
-
-        $userProvider->createAdmin("admin", "$2a$12$4R0ElCmlqesGeskNAFMl3uC/MHICdIzgk374991FNXqZJkF2iDQ.6");
-        $this->assertTrue($sessionAuth->login('admin', 'admin', $_SESSION[SessionAuth::UA_CSRF]));
-        $this->assertEquals($_SESSION[SessionAuth::UA_ATTEMPTS], 0);
-        $this->assertTrue($_SESSION[SessionAuth::UA_AUTH]);
-        $this->assertEquals($_SESSION[SessionAuth::UA_USERNAME], 'admin');
-        $this->assertEquals($_SESSION[SessionAuth::UA_DISPLAYNAME], 'admin');
-        $this->assertEquals($_SESSION[SessionAuth::UA_EMAIL], '');
-        $this->assertTrue($sessionAuth->isMemberOfGroup('administrators'));
-        $sessionAuth->logOut();
 
         $userProvider->deleteAll();
         $groupProvider->deleteAll();

@@ -4,7 +4,6 @@ namespace VoltCMS\UserAccess;
 
 use \Exception;
 use \VoltCMS\FileDB\FileDB;
-use \VoltCMS\Uuid\Uuid;
 
 class GroupProvider implements GroupProviderInterface 
 {
@@ -22,6 +21,7 @@ class GroupProvider implements GroupProviderInterface
             }
             self::$instance = new static();
             self::$db = new FileDB($directory);
+            self::$instance->createAdmministratorsGroup();
         }
         return self::$instance;
     }
@@ -119,6 +119,15 @@ class GroupProvider implements GroupProviderInterface
     public function deleteAll()
     {
         self::$db->deleteAll();
+        self::createAdmministratorsGroup();
+    }
+
+    private function createAdmministratorsGroup() {
+        if (!self::$instance->exists('displayName', 'Administrators')) {
+            $administrators = new Group();
+            $administrators->setDisplayName('Administrators');
+            self::$instance->create($administrators);
+        }
     }
 
     private function documentsToEntries(array $items): array
