@@ -21,7 +21,7 @@ class GroupProvider implements GroupProviderInterface
             }
             self::$instance = new static();
             self::$db = new FileDB($directory);
-            self::$instance->createAdmministratorsGroup();
+            self::$instance->createAdminGroup();
         }
         return self::$instance;
     }
@@ -119,10 +119,10 @@ class GroupProvider implements GroupProviderInterface
     public function deleteAll()
     {
         self::$db->deleteAll();
-        self::createAdmministratorsGroup();
+        self::createAdminGroup();
     }
 
-    private function createAdmministratorsGroup() {
+    private function createAdminGroup() {
         if (!self::$instance->exists('displayName', 'Administrators')) {
             $administrators = new Group();
             $administrators->setDisplayName('Administrators');

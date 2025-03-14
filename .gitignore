@@ -2,6 +2,7 @@ composer.phar
 /vendor/
 /node_modules/
 /data/
-/testdata/
+/demo/data/
+/tests/data/
 .DS_Store
 /.phpunit.cache

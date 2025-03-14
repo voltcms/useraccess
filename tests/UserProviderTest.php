@@ -13,8 +13,8 @@ class UserProviderTest extends TestCase
 
     public function test()
     {
-        $userProvider = UserProvider::getInstance(array('directory' => 'testdata/users'));
-        $groupProvider = GroupProvider::getInstance(array('directory' => 'testdata/groups'));
+        $userProvider = UserProvider::getInstance(array('directory' => 'tests/data/users'));
+        $groupProvider = GroupProvider::getInstance(array('directory' => 'tests/data/groups'));
 
         $userProvider->deleteAll();
         $groupProvider->deleteAll();

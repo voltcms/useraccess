@@ -1,6 +1,6 @@
 <?php
 
-require 'vendor/autoload.php';
+require '../../vendor/autoload.php';
 
 use VoltCMS\UserAccess\Group;
 use \VoltCMS\UserAccess\User;
@@ -8,8 +8,8 @@ use \VoltCMS\UserAccess\UserProvider;
 use \VoltCMS\UserAccess\GroupProvider;
 use \VoltCMS\UserAccess\SCIM;
 
-$userProvider = UserProvider::getInstance(array('directory' => 'testdata/users'));
-$groupProvider = GroupProvider::getInstance(array('directory' => 'testdata/groups'));
+$userProvider = UserProvider::getInstance(array('directory' => '../data/users'));
+$groupProvider = GroupProvider::getInstance(array('directory' => '../data/groups'));
 
 if (!$userProvider->exists('userName', 'Administrator')){
     $user = new User();

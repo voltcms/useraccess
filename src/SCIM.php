@@ -2,6 +2,7 @@
 
 namespace VoltCMS\UserAccess;
 
+use \Exception;
 use \Bramus\Router\Router;
 
 class SCIM
@@ -12,6 +13,7 @@ class SCIM
     private $sessionAuth;
     private $router;
     private $enforceAuthentication;
+    private $loggedInUser;
 
     public function __construct(UserProviderInterface $userProvider, GroupProviderInterface $groupProvider)
     {
@@ -31,14 +33,14 @@ class SCIM
         });
 
         if ($this->enforceAuthentication) {
-            $loggedInUser = $this->sessionAuth->getLoggedInUser();
-            if (!$loggedInUser) {
-                $loggedInUser = HeaderAuth::checkBasicAuthentication($this->userProvider);
+            $this->loggedInUser = $this->sessionAuth->getLoggedInUser();
+            if (!$this->loggedInUser) {
+                $this->loggedInUser = HeaderAuth::checkBasicAuthentication($this->userProvider);
             }
-            if (!$loggedInUser) {
+            if (!$this->loggedInUser) {
                 $this->throwError(401, "Unauthorized");
             } else {
-                if (!$loggedInUser->isAdmin()) {
+                if (!$this->loggedInUser->isAdmin()) {
                     $this->throwError(403, "Forbidden");
                 }
             }
@@ -103,12 +105,28 @@ class SCIM
             // if ($key == "schemas")
             //     foreach ($value as $val)
             //         $this->db->addResourceSchema($userID, $val);
-            if (in_array($key, array('id', 'groups', 'meta', 'schemas')))
+            if (in_array($key, array('id', 'groups', 'meta', 'schemas'))) {
                 continue;
+            }
             $attributes[$key] = $value;
         }
         $user->fromSCIM($attributes);
-        $user = $this->userProvider->create($user);
+        try {
+            $user = $this->userProvider->create($user);
+        } catch (Exception $e) {
+            error_log('Message: ' . $e->getMessage());
+            switch ($e->getMessage()) {
+                case 'EXCEPTION_USER_ALREADY_EXIST':
+                    exit($this->throwError(409, "User with username " . $user->getUserName() . " already exists."));
+                    break;
+                case 'EXCEPTION_DUPLICATE_EMAIL':
+                    exit($this->throwError(409, "User with email " . $user->getEmail() . " already exists."));
+                    break;
+                default:
+                    exit($this->throwError(409, $e->getMessage()));
+                    break;
+            }
+        }
         $payload = $user->toSCIM();
         unset($payload['_modified']);
         header("Content-Type: application/json", true, 201);
@@ -117,8 +135,9 @@ class SCIM
 
     public function getUser($userID, $isIncluded = '')
     {
-        if (!$this->userProvider->exists('id', $userID))
+        if (!$this->userProvider->exists('id', $userID)) {
             $this->throwError(404, "Selected user does not exist.");
+        }
         $user = $this->userProvider->read('id', $userID);
         $payload = $user->toSCIM(true);
         header("Etag: " . $payload['meta']['version']);
@@ -246,21 +265,24 @@ class SCIM
     public function putUser($requestBody, $userID)
     {
         $requestBody = $this->parseUserPayload(json_decode($requestBody, 1), true);
-        if (!$this->userProvider->exists('id', $userID))
+        if (!$this->userProvider->exists('id', $userID)) {
             $this->throwError(404, "Selected user does not exist.");
+        }
         $user = $this->userProvider->read('id', $userID);
         if ($this->userProvider->exists('userName', $requestBody['userName'])) {
             $userCheck = $this->userProvider->read('userName', $requestBody['userName']);
-            if ($userCheck->getId() != $user->getId())
+            if ($userCheck->getId() != $user->getId()) {
                 exit($this->throwError(400, "The username has already been taken by another user."));
+            }
         }
         $attributes = [];
         foreach ($requestBody as $key => $value) {
             // if ($key == "schemas")
             //     foreach ($value as $val)
             //         $this->db->addResourceSchema($userID, $val);
-            if (in_array($key, array('id', 'groups', 'meta', 'schemas')))
+            if (in_array($key, array('id', 'groups', 'meta', 'schemas'))) {
                 continue;
+            }
             $attributes[$key] = $value;
         }
         $user->fromSCIM($attributes);
@@ -311,128 +333,190 @@ class SCIM
 
     public function deleteUser($userID)
     {
-        if (!$this->userProvider->exists('id', $userID))
+        if (!$this->userProvider->exists('id', $userID)) {
             $this->throwError(404, "Selected user does not exist.");
+        }
         $this->userProvider->delete($userID);
         header("Content-Type: application/json", true, 204);
     }
 
     private function parseUserPayload($payload, $userCheck = false)
     {
-        if (!$payload)
+        if (!$payload) {
             exit($this->throwError(400, "Incorrect request was sent to the SCIM server."));
-        if ($userCheck == false)
-            if ($this->userProvider->exists('userName', $payload['userName']))
-                exit($this->throwError(409, "User already exists."));
-        if ($payload['schemas'] == "")
+        }
+        if ($userCheck == false) {
+            if ($this->userProvider->exists('userName', $payload['userName'])) {
+                exit($this->throwError(409, "User with username " . $payload['userName'] . " already exists."));
+            }
+        }
+        if ($payload['schemas'] == "") {
             exit($this->throwError(400, "No schema was found in the request for user creation process."));
-        if (!in_array("urn:ietf:params:scim:schemas:core:2.0:User", $payload['schemas']))
+        }
+        if (!in_array("urn:ietf:params:scim:schemas:core:2.0:User", $payload['schemas'])) {
             exit($this->throwError(400, "Incorrect schema was sent in the request for user creation process."));
+        }
         $schemas = $payload['schemas'];
         foreach ($schemas as $schema) {
-            if ($schema == "urn:ietf:params:scim:schemas:core:2.0:User")
+            if ($schema == "urn:ietf:params:scim:schemas:core:2.0:User") {
                 continue;
-            if ($payload[$schema] == "")
+            }
+            if ($payload[$schema] == "") {
                 exit($this->throwError(400, "The schema '" . htmlentities($schema, ENT_QUOTES) . "' was defined in the request, but it did not have a body set."));
+            }
         }
-        if (!array_key_exists('userName', $payload) || $payload['userName'] == "")
+        if (!array_key_exists('userName', $payload) || $payload['userName'] == "") {
             exit($this->throwError(400, "The 'userName' field was not present in the request."));
-        if (!is_string($payload['userName']))
+        }
+        if (!is_string($payload['userName'])) {
             exit($this->throwError(400, "The 'userName' field sent in the request must be a string."));
-        if (array_key_exists('name', $payload) && $payload['name'] != "")
-            if (!is_array($payload['name']))
+        }
+        if (array_key_exists('name', $payload) && $payload['name'] != "") {
+            if (!is_array($payload['name'])) {
                 exit($this->throwError(400, "The 'name' field was sent incorrectly in the request."));
-            else
-                foreach ($payload['name'] as $key => $value)
-                    if (!in_array($key, array("formatted", "familyName", "givenName", "middleName", "honorificPrefix", "honorificSuffix")))
+            } else {
+                foreach ($payload['name'] as $key => $value) {
+                    if (!in_array($key, array("formatted", "familyName", "givenName", "middleName", "honorificPrefix", "honorificSuffix"))) {
                         exit($this->throwError(400, "An unexpected field, '" . htmlentities($key, ENT_QUOTES) . "', was found under the 'name' field in the request."));
-                    elseif (!is_string($value))
+                    } elseif (!is_string($value)) {
                         exit($this->throwError(400, "The field '" . htmlentities($key, ENT_QUOTES) . "' contains a value that is not string."));
-        if (array_key_exists('displayName', $payload) && $payload['displayName'] != "")
-            if (!is_string($payload['displayName']))
+                    }
+                }
+            }
+        }
+        if (array_key_exists('displayName', $payload) && $payload['displayName'] != "") {
+            if (!is_string($payload['displayName'])) {
                 exit($this->throwError(400, "The 'displayName' field was sent incorrectly in the request."));
-        if (array_key_exists('nickName', $payload) && $payload['nickName'] != "")
-            if (!is_string($payload['nickName']))
+            }
+        }
+        if (array_key_exists('nickName', $payload) && $payload['nickName'] != "") {
+            if (!is_string($payload['nickName'])) {
                 exit($this->throwError(400, "The 'nickName' field was sent incorrectly in the request."));
-        if (array_key_exists('profileUrl', $payload) && $payload['profileUrl'] != "")
-            if (!is_string($payload['profileUrl']))
+            }
+        }
+        if (array_key_exists('profileUrl', $payload) && $payload['profileUrl'] != "") {
+            if (!is_string($payload['profileUrl'])) {
                 exit($this->throwError(400, "The 'profileUrl' field was sent incorrectly in the request."));
-        if (array_key_exists('title', $payload) && $payload['title'] != "")
-            if (!is_string($payload['title']))
+            }
+        }
+        if (array_key_exists('title', $payload) && $payload['title'] != "") {
+            if (!is_string($payload['title'])) {
                 exit($this->throwError(400, "The 'title' field was sent incorrectly in the request."));
-        if (array_key_exists('userType', $payload) && $payload['userType'] != "")
-            if (!is_string($payload['userType']))
+            }
+        }
+        if (array_key_exists('userType', $payload) && $payload['userType'] != "") {
+            if (!is_string($payload['userType'])) {
                 exit($this->throwError(400, "The 'userType' field was sent incorrectly in the request."));
-        if (array_key_exists('preferredLanguage', $payload) && $payload['preferredLanguage'] != "")
-            if (!is_string($payload['preferredLanguage']))
+            }
+        }
+        if (array_key_exists('preferredLanguage', $payload) && $payload['preferredLanguage'] != "") {
+            if (!is_string($payload['preferredLanguage'])) {
                 exit($this->throwError(400, "The 'preferredLanguage' field was sent incorrectly in the request."));
-        if (array_key_exists('locale', $payload) && $payload['locale'] != "")
-            if (!is_string($payload['locale']))
+            }
+        }
+        if (array_key_exists('locale', $payload) && $payload['locale'] != "") {
+            if (!is_string($payload['locale'])) {
                 exit($this->throwError(400, "The 'locale' field was sent incorrectly in the request."));
-        if (array_key_exists('timezone', $payload) && $payload['timezone'] != "")
-            if (!is_string($payload['timezone']))
+            }
+        }
+        if (array_key_exists('timezone', $payload) && $payload['timezone'] != "") {
+            if (!is_string($payload['timezone'])) {
                 exit($this->throwError(400, "The 'timezone' field was sent incorrectly in the request."));
-        if (array_key_exists('active', $payload) && $payload['active'] != "")
-            if (!is_bool($payload['active']) && !is_integer($payload['active']))
+            }
+        }
+        if (array_key_exists('active', $payload) && $payload['active'] != "") {
+            if (!is_bool($payload['active']) && !is_integer($payload['active'])) {
                 exit($this->throwError(400, "The 'active' field was sent incorrectly in the request."));
+            }
+        }
         if (!array_key_exists('active', $payload) || $payload['active'] == "" || $payload['active'] == 0) {
             $payload['active'] = false;
         }
         if (array_key_exists('active', $payload) && $payload['active'] == 1) {
             $payload['active'] = true;
         }
-        if (array_key_exists('emails', $payload) && $payload['emails'] != "")
-            if (!is_array($payload['emails']))
+        if (array_key_exists('emails', $payload) && $payload['emails'] != "") {
+            if (!is_array($payload['emails'])) {
                 exit($this->throwError(400, "The 'emails' field was sent incorrectly in the request."));
-            else
-                foreach ($payload['emails'] as $emails)
-                    if (!is_array($emails))
-                        exit($this->throwError(400, "The 'emails' field was sent incorrectly in the request."));
-        if (array_key_exists('phoneNumbers', $payload) && $payload['phoneNumbers'] != "")
-            if (!is_array($payload['phoneNumbers']))
+            }
+        } else {
+            foreach ($payload['emails'] as $emails) {
+                if (!is_array($emails)) {
+                    exit($this->throwError(400, "The 'emails' field was sent incorrectly in the request."));
+                }
+            }
+        }
+        if (array_key_exists('phoneNumbers', $payload) && $payload['phoneNumbers'] != "") {
+            if (!is_array($payload['phoneNumbers'])) {
                 exit($this->throwError(400, "The 'phoneNumbers' field was sent incorrectly in the request."));
-            else
-                foreach ($payload['phoneNumbers'] as $phoneNumbers)
-                    if (!is_array($phoneNumbers))
-                        exit($this->throwError(400, "The 'phoneNumbers' field was sent incorrectly in the request."));
-        if (array_key_exists('ims', $payload) && $payload['ims'] != "")
-            if (!is_array($payload['ims']))
+            }
+        } else {
+            foreach ($payload['phoneNumbers'] as $phoneNumbers) {
+                if (!is_array($phoneNumbers)) {
+                    exit($this->throwError(400, "The 'phoneNumbers' field was sent incorrectly in the request."));
+                }
+            }
+        }
+        if (array_key_exists('ims', $payload) && $payload['ims'] != "") {
+            if (!is_array($payload['ims'])) {
                 exit($this->throwError(400, "The 'ims' field was sent incorrectly in the request."));
-            else
-                foreach ($payload['ims'] as $ims)
-                    if (!is_array($ims))
-                        exit($this->throwError(400, "The 'ims' field was sent incorrectly in the request."));
-        if (array_key_exists('photos', $payload) && $payload['photos'] != "")
-            if (!is_array($payload['photos']))
+            }
+        } else {
+            foreach ($payload['ims'] as $ims) {
+                if (!is_array($ims)) {
+                    exit($this->throwError(400, "The 'ims' field was sent incorrectly in the request."));
+                }
+            }
+        }
+        if (array_key_exists('photos', $payload) && $payload['photos'] != "") {
+            if (!is_array($payload['photos'])) {
                 exit($this->throwError(400, "The 'photos' field was sent incorrectly in the request."));
-            else
-                foreach ($payload['photos'] as $photos)
-                    if (!is_array($photos))
-                        exit($this->throwError(400, "The 'photos' field was sent incorrectly in the request."));
-        if (array_key_exists('addresses', $payload) && $payload['addresses'] != "")
-            if (!is_array($payload['addresses']))
+            }
+        } else {
+            foreach ($payload['photos'] as $photos) {
+                if (!is_array($photos)) {
+                    exit($this->throwError(400, "The 'photos' field was sent incorrectly in the request."));
+                }
+            }
+        }
+        if (array_key_exists('addresses', $payload) && $payload['addresses'] != "") {
+            if (!is_array($payload['addresses'])) {
                 exit($this->throwError(400, "The 'addresses' field was sent incorrectly in the request."));
-            else
-                foreach ($payload['addresses'] as $addresses)
-                    if (!is_array($addresses))
-                        exit($this->throwError(400, "The 'addresses' field was sent incorrectly in the request."));
-        if (array_key_exists('entitlements', $payload) && $payload['entitlements'] != "")
-            if (!is_array($payload['entitlements']))
+            }
+        } else {
+            foreach ($payload['addresses'] as $addresses) {
+                if (!is_array($addresses)) {
+                    exit($this->throwError(400, "The 'addresses' field was sent incorrectly in the request."));
+                }
+            }
+        }
+        if (array_key_exists('entitlements', $payload) && $payload['entitlements'] != "") {
+            if (!is_array($payload['entitlements'])) {
                 exit($this->throwError(400, "The 'entitlements' field was sent incorrectly in the request."));
-            else
-                foreach ($payload['entitlements'] as $entitlements)
-                    if (!is_array($entitlements))
+            } else {
+                foreach ($payload['entitlements'] as $entitlements) {
+                    if (!is_array($entitlements)) {
                         exit($this->throwError(400, "The 'entitlements' field was sent incorrectly in the request."));
-        if (array_key_exists('roles', $payload) && $payload['roles'] != "")
-            if (!is_array($payload['roles']))
+                    }
+                }
+            }
+        }
+        if (array_key_exists('roles', $payload) && $payload['roles'] != "") {
+            if (!is_array($payload['roles'])) {
                 exit($this->throwError(400, "The 'roles' field was sent incorrectly in the request."));
-            else
-                foreach ($payload['roles'] as $roles)
-                    if (!is_array($roles))
+            } else {
+                foreach ($payload['roles'] as $roles) {
+                    if (!is_array($roles)) {
                         exit($this->throwError(400, "The 'roles' field was sent incorrectly in the request."));
-        foreach ($payload as $key => $value)
-            if (!in_array($key, array('schemas', 'id', 'externalId', 'meta', 'userName', 'name', 'displayName', 'nickName', 'profileUrl', 'title', 'userType', 'preferredLanguage', 'locale', 'timezone', 'active', 'password', 'emails', 'phoneNumbers', 'ims', 'photos', 'addresses', 'groups', 'entitlements', 'roles', 'x509Certificates')) && !in_array($key, $schemas))
+                    }
+                }
+            }
+        }
+        foreach ($payload as $key => $value) {
+            if (!in_array($key, array('schemas', 'id', 'externalId', 'meta', 'userName', 'name', 'displayName', 'nickName', 'profileUrl', 'title', 'userType', 'preferredLanguage', 'locale', 'timezone', 'active', 'password', 'emails', 'phoneNumbers', 'ims', 'photos', 'addresses', 'groups', 'entitlements', 'roles', 'x509Certificates')) && !in_array($key, $schemas)) {
                 exit($this->throwError(400, "The '" . htmlentities($key, ENT_QUOTES) . "' field must not be present in the request."));
+            }
+        }
         // if ($payload['urn:ietf:params:scim:schemas:extension:enterprise:2.0:User'] != "")
         //     if ($payload['urn:ietf:params:scim:schemas:extension:enterprise:2.0:User']['employeeNumber'] != "" && !is_string($payload['urn:ietf:params:scim:schemas:extension:enterprise:2.0:User']['employeeNumber']) && !is_numeric($payload['urn:ietf:params:scim:schemas:extension:enterprise:2.0:User']['employeeNumber']))
         //         exit($this->throwError(400, "The 'employeeNumber' field contains an invalid value in the request."));
@@ -460,8 +544,9 @@ class SCIM
             // if ($key == "schemas")
             //     foreach ($value as $val)
             //         $this->db->addResourceSchema($groupID, $val);
-            if (in_array($key, array('id', 'meta', 'schemas')))
+            if (in_array($key, array('id', 'meta', 'schemas'))) {
                 continue;
+            }
             // if ($key == "members")
             //     foreach ($value as $member)
             //         $this->db->addGroupMember($groupID, $member['value']);
@@ -611,16 +696,18 @@ class SCIM
         $group = $this->groupProvider->read('id', $groupID);
         if ($this->groupProvider->exists('displayName', $requestBody['displayName'])) {
             $groupCheck = $this->groupProvider->read('displayName', $requestBody['displayName']);
-            if ($groupCheck->getId() != $group->getId())
+            if ($groupCheck->getId() != $group->getId()) {
                 exit($this->throwError(400, "The displayname has already been taken by another group."));
+            }
         }
         $attributes = [];
         foreach ($requestBody as $key => $value) {
             // if ($key == "schemas")
             //     foreach ($value as $val)
             //         $this->db->addResourceSchema($groupID, $val);
-            if (in_array($key, array('id', 'meta', 'schemas')))
+            if (in_array($key, array('id', 'meta', 'schemas'))) {
                 continue;
+            }
             // if ($key == "members") {
             //     $group = $this->groupProvider->read('id', $groupID);
             //     $group->addMembers($value);
@@ -637,23 +724,33 @@ class SCIM
 
     public function deleteGroup($groupID)
     {
-        if (!$this->groupProvider->exists('id', $groupID))
+        if (!$this->groupProvider->exists('id', $groupID)) {
             $this->throwError(404, "Group selected does not exist.");
+        }
+        $group = $this->groupProvider->read('id', $groupID);
+        if ($group->getDisplayName() == "Administrators") {
+            $this->throwError(403, "Forbidden");
+        }
         $this->groupProvider->delete($groupID);
         header("Content-Type: application/json", true, 204);
     }
 
     private function parseGroupPayload($payload, $groupCheck = false)
     {
-        if (!$payload)
+        if (!$payload) {
             exit($this->throwError(400, "Incorrect request was sent to the SCIM server."));
-        if ($groupCheck == false)
-            if ($this->groupProvider->exists('displayName', $payload['displayName']))
-                exit($this->throwError(409, "Group already exists."));
-        if ($payload['schemas'] == "" || !in_array("urn:ietf:params:scim:schemas:core:2.0:Group", $payload['schemas']))
+        }
+        if ($groupCheck == false) {
+            if ($this->groupProvider->exists('displayName', $payload['displayName'])) {
+                exit($this->throwError(409, "Group with displayname " . $payload['displayName'] . " already exists."));
+            }
+        }
+        if ($payload['schemas'] == "" || !in_array("urn:ietf:params:scim:schemas:core:2.0:Group", $payload['schemas'])) {
             exit($this->throwError(400, "Incorrect schema was provided in the request."));
-        if ($payload['displayName'] == "")
+        }
+        if ($payload['displayName'] == "") {
             exit($this->throwError(400, "No displayName was provided in the request."));
+        }
         return $payload;
     }
 
