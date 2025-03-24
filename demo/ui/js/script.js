@@ -270,9 +270,11 @@ document.addEventListener("DOMContentLoaded", function () {
                                 type: "boolean",
                                 render: function (data, cell, dataIndex, cellIndex) {
                                     if (data) {
-                                        return "<button type=\"button\" class=\"btn btn-danger btn-remove-group-member\">Remove</button>";
+                                        // return "<button type=\"button\" class=\"btn btn-danger btn-remove-group-member\">Remove</button>";
+                                        return "<div class=\"form-check form-switch\"><button type=\"button\" class=\"form-check-input checked btn-remove-group-member\"></button>";
                                     } else {
-                                        return "<button type=\"button\" class=\"btn btn-success btn-add-group-member\">Add</button>";
+                                        // return "<button type=\"button\" class=\"btn btn-success btn-add-group-member\">Add</button>";
+                                        return "<div class=\"form-check form-switch\"><button type=\"button\" class=\"form-check-input not-checked btn-add-group-member\"></button>";
                                     }
                                 }
                             }
@@ -282,7 +284,7 @@ document.addEventListener("DOMContentLoaded", function () {
                         if (event.target.matches(".btn-remove-group-member") || event.target.matches(".btn-add-group-member")) {
                             event.preventDefault();
                             event.stopPropagation();
-                            const index = parseInt(event.target.parentElement.parentElement.dataset.index, 10);
+                            const index = parseInt(event.target.parentElement.parentElement.parentElement.dataset.index, 10);
                             this.groupMemberTable.data.data[index].cells[3].data = event.target.matches(".btn-add-group-member") ? true : false;
                             this.groupMemberTable.update();
                         }
