@@ -7,13 +7,13 @@ document.addEventListener("DOMContentLoaded", function () {
         createUserForm = document.getElementById("createUserForm");
         createUserModal = document.getElementById("createUserModal");
         deleteGroupForm = document.getElementById("deleteGroupForm");
-        deleteGroupFormId = document.getElementById("deleteGroupFormId");
         deleteGroupModal = document.getElementById("deleteGroupModal");
         deleteUserForm = document.getElementById("deleteUserForm");
         deleteUserModal = document.getElementById("deleteUserModal");
         updateGroupForm = document.getElementById("updateGroupForm");
         updateGroupModal = document.getElementById("updateGroupModal");
         updateUserModal = document.getElementById("updateUserModal");
+        updateUserForm = document.getElementById("updateUserForm");
 
         init() {
             this.loadUsers();
@@ -36,11 +36,33 @@ document.addEventListener("DOMContentLoaded", function () {
             });
             this.deleteGroupForm.addEventListener("submit", (event) => {
                 event.preventDefault();
-                this.deleteGroup(this.deleteGroupFormId.value);
+                this.deleteGroup(this.deleteGroupForm.querySelector("[name=\"id\"]").value);
             });
             this.createGroupModal.addEventListener("show.bs.modal", event => {
                 this.loadGroupMembers("#createGroupFormGroupMembers");
             });
+        }
+
+        loadUser = async function (id) {
+            fetch("../api/scim/users" + "/" + id)
+                .then(response => response.json())
+                .then(data => {
+                    if (data) {
+                        // document.querySelector('#your-id[name="your-name"]')
+                        document.getElementById("updateUserForm").querySelector("[name=\"id\"]").value = data.id;
+                        document.getElementById("updateUserForm").querySelector("[name=\"userName\"]").value = data.userName;
+                        document.getElementById("updateUserModal").querySelector("[name=\"name\"]").textContent = data.displayName + " (" + data.userName + ")";
+                        document.getElementById("updateUserForm").querySelector("[name=\"givenName\"]").value = data.name.givenName;
+                        document.getElementById("updateUserForm").querySelector("[name=\"familyName\"]").value = data.name.familyName;
+                        document.getElementById("updateUserForm").querySelector("[name=\"email\"]").value = data.emails[0].value;
+                        document.getElementById("updateUserForm").querySelector("[name=\"active\"]").checked = data.active;
+                        document.getElementById("updateUserForm").querySelector("[name=\"active\"]").value = data.active;
+                        // document.getElementById("updateUserForm").querySelector("[name=\"password\"]").value = data.password;
+                    }
+                })
+                .catch(error => {
+                    console.error("Error loading user:", error);
+                });
         }
 
         loadUsers = async function () {
@@ -115,16 +137,14 @@ document.addEventListener("DOMContentLoaded", function () {
                         document.querySelectorAll(".btn-update-user").forEach((element) => {
                             element.addEventListener("click", (event) => {
                                 const index = event.target.parentElement.parentElement.dataset.index;
-                                modal.dataset.id = this.userTable.data.data[index].cells[0].data[0].data;
-                                modal.dataset.name = this.userTable.data.data[index].cells[1].data[0].data;
-                                document.getElementById("updateUserModalTitleName").textContent = modal.dataset.name;
+                                this.loadUser(this.userTable.data.data[index].cells[0].data[0].data);
                                 new bootstrap.Modal(this.updateUserModal).show();
                             });
                         });
                         document.querySelectorAll(".btn-delete-user").forEach((element) => {
                             element.addEventListener("click", (event) => {
                                 const index = event.target.parentElement.parentElement.dataset.index;
-                                document.getElementById("deleteUserFormId").value = this.userTable.data.data[index].cells[0].data[0].data;
+                                this.deleteUserForm.querySelector("[name=\"id\"]").value = this.userTable.data.data[index].cells[0].data[0].data;
                                 document.getElementById("deleteUserModalTitleName").textContent = this.userTable.data.data[index].cells[1].data[0].data;
                                 new bootstrap.Modal(this.deleteUserModal).show();
                             });
@@ -141,9 +161,9 @@ document.addEventListener("DOMContentLoaded", function () {
                 .then(response => response.json())
                 .then(data => {
                     if (data) {
-                        document.getElementById("updateGroupFormId").value = data.id;
-                        document.getElementById("updateGroupFormDisplayName").value = data.displayName;
-                        document.getElementById("updateGroupModalTitleName").textContent = data.displayName;
+                        document.getElementById("updateGroupForm").querySelector("[name=\"id\"]").value = data.id;
+                        document.getElementById("updateGroupForm").querySelector("[name=\"displayName\"]").value = data.displayName;
+                        document.getElementById("updateGroupModal").querySelector("[name=\"name\"]").textContent = data.displayName;
                     }
                     this.loadGroupMembers("#updateGroupFormGroupMembers", data.members);
                 })
@@ -151,7 +171,6 @@ document.addEventListener("DOMContentLoaded", function () {
                     console.error("Error loading group:", error);
                 });
         }
-
 
         loadGroups = async function () {
             fetch("../api/scim/groups")
@@ -207,7 +226,7 @@ document.addEventListener("DOMContentLoaded", function () {
                         document.querySelectorAll(".btn-delete-group").forEach((element) => {
                             element.addEventListener("click", (event) => {
                                 const index = event.target.parentElement.parentElement.dataset.index;
-                                this.deleteGroupFormId.value = this.groupTable.data.data[index].cells[0].data[0].data;
+                                this.deleteGroupForm.querySelector("[name=\"id\"]").value = this.groupTable.data.data[index].cells[0].data[0].data;
                                 document.getElementById("deleteGroupModalTitleName").textContent = this.groupTable.data.data[index].cells[1].data[0].data;
                                 new bootstrap.Modal(this.deleteGroupModal).show();
                             });
