@@ -22,6 +22,10 @@ document.addEventListener("DOMContentLoaded", function () {
                 event.preventDefault();
                 this.createUser();
             });
+            this.updateUserForm.addEventListener("submit", (event) => {
+                event.preventDefault();
+                this.updateUser();
+            });
             this.deleteUserForm.addEventListener("submit", (event) => {
                 event.preventDefault();
                 this.deleteUser(this.deleteUserModal.dataset.id);
@@ -358,6 +362,74 @@ document.addEventListener("DOMContentLoaded", function () {
                 });
         }
 
+        updateUser = async function () {
+            const formData = new FormData(this.updateUserForm);
+            var data =
+            {
+                "schemas": [
+                    "urn:ietf:params:scim:schemas:core:2.0:User"
+                ],
+                "userName": formData.get("userName"),
+                "displayName": formData.get("givenName") + " " + formData.get("familyName"),
+                "active": formData.get("active") == "on" ? true : false,
+                "name": {
+                    "familyName": formData.get("familyName"),
+                    "givenName": formData.get("givenName")
+                },
+                "emails": [
+                    {
+                        "type": "work",
+                        "primary": "true",
+                        "value": formData.get("email")
+                    }
+                ]
+            };
+            if (formData.get("password").trim() != "") {
+                // Only set password if it is not empty
+                // If password is empty, the server will not update the password
+                data["password"] = formData.get("password");
+            }
+            var data = JSON.stringify(data);
+            fetch("../api/scim/users/" + formData.get("id"), {
+                method: "PUT",
+                headers: {
+                    "Accept": "application/json",
+                    "Content-Type": "application/json"
+                },
+                body: data
+            }).then(response => response.json()
+            ).then(data => {
+                if (data.schemas && data.schemas.length > 0 && data.schemas[0] && data.schemas[0] == "urn:ietf:params:scim:schemas:core:2.0:User") {
+                    bootstrap.Modal.getInstance(this.updateUserModal).hide();
+                    this.loadUsers();
+                    this.updateUserForm.reset();
+                }
+            })
+                .catch(error => {
+                    console.error("Error updating user:", error);
+                });
+        }
+
+        deleteUser = async function () {
+            const formData = new FormData(this.deleteUserForm);
+            fetch("../api/scim/users/" + formData.get("id"), {
+                method: "DELETE",
+                headers: {
+                    "Accept": "application/json",
+                    "Content-Type": "application/json"
+                }
+            }).then()
+                .then(data => {
+                    if (data.status == 204) {
+                        bootstrap.Modal.getInstance(this.deleteUserModal).hide();
+                        this.loadUsers();
+                    }
+                })
+                .catch(error => {
+                    console.error("Error deleting user:", error);
+                });
+        }
+
         createGroup = async function () {
             const formData = new FormData(this.createGroupForm);
             var data =
@@ -431,26 +503,6 @@ document.addEventListener("DOMContentLoaded", function () {
             })
                 .catch(error => {
                     console.error("Error updating group:", error);
-                });
-        }
-
-        deleteUser = async function () {
-            const formData = new FormData(this.deleteUserForm);
-            fetch("../api/scim/users/" + formData.get("id"), {
-                method: "DELETE",
-                headers: {
-                    "Accept": "application/json",
-                    "Content-Type": "application/json"
-                }
-            }).then()
-                .then(data => {
-                    if (data.status == 204) {
-                        bootstrap.Modal.getInstance(this.deleteUserModal).hide();
-                        this.loadUsers();
-                    }
-                })
-                .catch(error => {
-                    console.error("Error deleting user:", error);
                 });
         }
 
