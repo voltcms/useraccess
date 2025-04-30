@@ -59,16 +59,16 @@
         },
         {
             "name": "voltcms/filedb",
-            "version": "2.0.0",
+            "version": "2.0.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/voltcms/filedb.git",
-                "reference": "5f27d90b63570a7d38f6d8d20c994bc9613f36c6"
+                "reference": "4d0f4e0f99c493353df25abea70bfb681bd26fc5"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/voltcms/filedb/zipball/5f27d90b63570a7d38f6d8d20c994bc9613f36c6",
-                "reference": "5f27d90b63570a7d38f6d8d20c994bc9613f36c6",
+                "url": "https://api.github.com/repos/voltcms/filedb/zipball/4d0f4e0f99c493353df25abea70bfb681bd26fc5",
+                "reference": "4d0f4e0f99c493353df25abea70bfb681bd26fc5",
                 "shasum": ""
             },
             "require": {
@@ -97,9 +97,9 @@
             "description": "Flat file DB based on JSON files",
             "support": {
                 "issues": "https://github.com/voltcms/filedb/issues",
-                "source": "https://github.com/voltcms/filedb/tree/2.0.0"
+                "source": "https://github.com/voltcms/filedb/tree/2.0.1"
             },
-            "time": "2023-09-05T19:41:04+00:00"
+            "time": "2025-04-30T11:24:47+00:00"
         },
         {
             "name": "voltcms/uuid",
@@ -148,16 +148,16 @@
     "packages-dev": [
         {
             "name": "myclabs/deep-copy",
-            "version": "1.13.0",
+            "version": "1.13.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/myclabs/DeepCopy.git",
-                "reference": "024473a478be9df5fdaca2c793f2232fe788e414"
+                "reference": "1720ddd719e16cf0db4eb1c6eca108031636d46c"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/myclabs/DeepCopy/zipball/024473a478be9df5fdaca2c793f2232fe788e414",
-                "reference": "024473a478be9df5fdaca2c793f2232fe788e414",
+                "url": "https://api.github.com/repos/myclabs/DeepCopy/zipball/1720ddd719e16cf0db4eb1c6eca108031636d46c",
+                "reference": "1720ddd719e16cf0db4eb1c6eca108031636d46c",
                 "shasum": ""
             },
             "require": {
@@ -196,7 +196,7 @@
             ],
             "support": {
                 "issues": "https://github.com/myclabs/DeepCopy/issues",
-                "source": "https://github.com/myclabs/DeepCopy/tree/1.13.0"
+                "source": "https://github.com/myclabs/DeepCopy/tree/1.13.1"
             },
             "funding": [
                 {
@@ -204,7 +204,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2025-02-12T12:17:51+00:00"
+            "time": "2025-04-29T12:36:36+00:00"
         },
         {
             "name": "nikic/php-parser",

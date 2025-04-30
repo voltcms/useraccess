@@ -5,7 +5,7 @@ namespace VoltCMS\UserAccess;
 interface GroupProviderInterface
 {
 
-    public static function getInstance(array $config = null);
+    public static function getInstance(?array $config = null);
 
     public function exists(string $attribute, string $value): bool;
 

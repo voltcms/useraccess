@@ -19,7 +19,7 @@ class SCIM
     {
         $this->userProvider = $userProvider;
         $this->groupProvider = $groupProvider;
-        $this->sessionAuth = SessionAuth::getInstance($this->userProvider);
+        $this->sessionAuth = SessionAuth::getInstance($this->userProvider, $this->groupProvider);
         $this->router = new Router();
         $this->enforceAuthentication = false;
     }
@@ -438,55 +438,55 @@ class SCIM
         if (array_key_exists('emails', $payload) && $payload['emails'] != "") {
             if (!is_array($payload['emails'])) {
                 exit($this->throwError(400, "The 'emails' field was sent incorrectly in the request."));
-            }
-        } else {
-            foreach ($payload['emails'] as $emails) {
-                if (!is_array($emails)) {
-                    exit($this->throwError(400, "The 'emails' field was sent incorrectly in the request."));
+            } else {
+                foreach ($payload['emails'] as $emails) {
+                    if (!is_array($emails)) {
+                        exit($this->throwError(400, "The 'emails' field was sent incorrectly in the request."));
+                    }
                 }
             }
         }
         if (array_key_exists('phoneNumbers', $payload) && $payload['phoneNumbers'] != "") {
             if (!is_array($payload['phoneNumbers'])) {
                 exit($this->throwError(400, "The 'phoneNumbers' field was sent incorrectly in the request."));
-            }
-        } else {
-            foreach ($payload['phoneNumbers'] as $phoneNumbers) {
-                if (!is_array($phoneNumbers)) {
-                    exit($this->throwError(400, "The 'phoneNumbers' field was sent incorrectly in the request."));
+            } else {
+                foreach ($payload['phoneNumbers'] as $phoneNumbers) {
+                    if (!is_array($phoneNumbers)) {
+                        exit($this->throwError(400, "The 'phoneNumbers' field was sent incorrectly in the request."));
+                    }
                 }
             }
         }
         if (array_key_exists('ims', $payload) && $payload['ims'] != "") {
             if (!is_array($payload['ims'])) {
                 exit($this->throwError(400, "The 'ims' field was sent incorrectly in the request."));
-            }
-        } else {
-            foreach ($payload['ims'] as $ims) {
-                if (!is_array($ims)) {
-                    exit($this->throwError(400, "The 'ims' field was sent incorrectly in the request."));
+            } else {
+                foreach ($payload['ims'] as $ims) {
+                    if (!is_array($ims)) {
+                        exit($this->throwError(400, "The 'ims' field was sent incorrectly in the request."));
+                    }
                 }
             }
         }
         if (array_key_exists('photos', $payload) && $payload['photos'] != "") {
             if (!is_array($payload['photos'])) {
                 exit($this->throwError(400, "The 'photos' field was sent incorrectly in the request."));
-            }
-        } else {
-            foreach ($payload['photos'] as $photos) {
-                if (!is_array($photos)) {
-                    exit($this->throwError(400, "The 'photos' field was sent incorrectly in the request."));
+            } else {
+                foreach ($payload['photos'] as $photos) {
+                    if (!is_array($photos)) {
+                        exit($this->throwError(400, "The 'photos' field was sent incorrectly in the request."));
+                    }
                 }
             }
         }
         if (array_key_exists('addresses', $payload) && $payload['addresses'] != "") {
             if (!is_array($payload['addresses'])) {
                 exit($this->throwError(400, "The 'addresses' field was sent incorrectly in the request."));
-            }
-        } else {
-            foreach ($payload['addresses'] as $addresses) {
-                if (!is_array($addresses)) {
-                    exit($this->throwError(400, "The 'addresses' field was sent incorrectly in the request."));
+            } else {
+                foreach ($payload['addresses'] as $addresses) {
+                    if (!is_array($addresses)) {
+                        exit($this->throwError(400, "The 'addresses' field was sent incorrectly in the request."));
+                    }
                 }
             }
         }

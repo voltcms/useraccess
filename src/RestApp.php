@@ -13,11 +13,11 @@ class RestApp
     public function __construct(UserProviderInterface $userProvider, ?String $basePath = null)
     {
 
-        $this->router = new \Bramus\Router\Router();
-        if (!empty($basePath)) {
-            $this->router->setBasePath($basePath);
-        }
-        $this->userProvider = $userProvider;
+        // $this->router = new \Bramus\Router\Router();
+        // if (!empty($basePath)) {
+        //     $this->router->setBasePath($basePath);
+        // }
+        // $this->userProvider = $userProvider;
 
         //////////////////////////////////////////////////
 
@@ -53,17 +53,17 @@ class RestApp
 
         //////////////////////////////////////////////////
 
-        $this->router->get('/v1/Users', function () {
-            // header('Content-Type: application/scim+json');
-            $result = $this->userProvider->readAll();
-            echo json_encode($result);
-        });
+        // $this->router->get('/v1/Users', function () {
+        //     // header('Content-Type: application/scim+json');
+        //     $result = $this->userProvider->readAll();
+        //     echo json_encode($result);
+        // });
 
-        $this->router->get('/v1/Users/{id}', function ($id) {
-            // header('Content-Type: application/scim+json');
-            $result = $this->userProvider->read('id', $id);
-            echo json_encode($result);
-        });
+        // $this->router->get('/v1/Users/{id}', function ($id) {
+        //     // header('Content-Type: application/scim+json');
+        //     $result = $this->userProvider->read('id', $id);
+        //     echo json_encode($result);
+        // });
 
         //     $this->router->post('/v1/Users', function (Request $request, Response $response, array $args) {
         //         $userAccess = $this->get('userAccess');
@@ -206,10 +206,10 @@ class RestApp
 
     }
 
-    public function run()
-    {
-        $this->router->run();
-    }
+    // public function run()
+    // {
+    //     $this->router->run();
+    // }
 
     // public function getApp() {
     //     return $this->router;

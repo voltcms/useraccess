@@ -5,7 +5,7 @@ namespace VoltCMS\UserAccess;
 interface UserProviderInterface
 {
 
-    public static function getInstance(array $config = null);
+    public static function getInstance(?array $config = null);
 
     public function exists(string $attribute, string $value): bool;
 

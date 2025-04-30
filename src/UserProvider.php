@@ -11,7 +11,7 @@ class UserProvider implements UserProviderInterface
     private static $instance = null;
     private static $db;
 
-    public static function getInstance(array $config = null)
+    public static function getInstance(?array $config = null)
     {
         if (self::$instance === null) {
             if (empty($config) || empty($config['directory'])) {

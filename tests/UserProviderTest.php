@@ -6,7 +6,6 @@ use \VoltCMS\UserAccess\UserProvider;
 use \VoltCMS\UserAccess\GroupProvider;
 use \VoltCMS\UserAccess\SessionAuth;
 use \VoltCMS\UserAccess\User;
-use \VoltCMS\UserAccess\UserProviderInterface;
 
 class UserProviderTest extends TestCase
 {
@@ -146,7 +145,7 @@ class UserProviderTest extends TestCase
         $this->assertEquals(3, count($users));
 
         // $_SERVER[SessionAuth::HTTP_X_CSRF_TOKEN] = 'fetch';
-        $sessionAuth = SessionAuth::getInstance($userProvider);
+        $sessionAuth = SessionAuth::getInstance($userProvider, $groupProvider);
         $this->assertNotEmpty($_SESSION[SessionAuth::UA_CSRF]);
         $this->assertFalse($sessionAuth->login('userid1', 'password1_xxx'));
         $this->assertFalse($sessionAuth->login('xxxxx', 'password1_xxx'));

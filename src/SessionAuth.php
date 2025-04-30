@@ -26,20 +26,25 @@ class SessionAuth
 
     private $now = 0;
     private $userProvider = null;
+    private $groupProvider = null;
     private $loggedInUser = null;
     private $maxLoginAttempts = 10;
     private $refreshTime = 60;
 
     // public static function getInstance(array $userProvider): SessionAuth {
-    public static function getInstance($userProvider, $maxLoginAttempts = 10, $refreshTime = 60): SessionAuth
+    public static function getInstance($userProvider, $groupProvider, $maxLoginAttempts = 10, $refreshTime = 60): SessionAuth
     {
         if (empty($userProvider)) {
-            throw new Exception("User Providers cannot be empty");
+            throw new Exception("User Provider cannot be empty");
+        }
+        if (empty($groupProvider)) {
+            throw new Exception("Group Provider cannot be empty");
         }
         if (self::$instance === null) {
             self::$instance = new static();
             self::$instance->now = time();
             self::$instance->userProvider = $userProvider;
+            self::$instance->groupProvider = $groupProvider;
             self::$instance->maxLoginAttempts = $maxLoginAttempts;
             self::$instance->refreshTime = $refreshTime;
             self::$instance->startSession();
@@ -150,7 +155,7 @@ class SessionAuth
         self::$instance->loggedInUser = $user;
     }
 
-    public function login(string $userName, string $password, string $csrf_token = null): bool
+    public function login(string $userName, string $password, ?string $csrf_token = null): bool
     {
         $result = false;
         $userName = trim(strtolower($userName));
