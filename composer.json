@@ -12,7 +12,6 @@
     "type": "project",
     "require": {
         "php": "^8",
-        "voltcms/uuid": "^1",
         "voltcms/filedb": "^2",
         "bramus/router": "^1"
     },
