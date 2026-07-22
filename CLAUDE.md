@@ -98,10 +98,13 @@ Always run `composer test` yourself before considering a change done.
   provider, then call `runRouter()`. It uses **`bramus/router`** to map
   `/scim/users`, `/scim/users/{uuid}`, `/scim/groups`, `/scim/groups/{uuid}`, and
   `/scim/ServiceProviderConfigs` to handler methods.
-- Supported verbs: **GET (list + single), POST (create), PUT (replace), DELETE**.
-  **PATCH is intentionally not implemented** — the `patchUser` / `patchGroup` methods and
-  their routes are left commented out. `ServiceProviderConfig` advertises
-  `patch.supported = false` accordingly.
+- Supported verbs: **GET (list + single), POST (create), PUT (replace), PATCH, DELETE**.
+  `patchUser` / `patchGroup` implement SCIM PatchOp (`op` = add / replace / remove).
+  Users support attribute paths (`userName`, `displayName`, `name.familyName`/`givenName`,
+  `active`, `password`, `emails`) plus a pathless replace whose value is an attribute
+  object. Groups support `members` (add / replace / remove, including
+  `members[value eq "uuid"]` and a bare `remove` that clears all) and `displayName`.
+  `ServiceProviderConfig` advertises `patch.supported = true`.
 - Responses are hand-built SCIM JSON. Note the consistent output idiom:
   `preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES))`
   strips control characters. Keep this pattern when adding handlers.
@@ -136,8 +139,9 @@ Always run `composer test` yourself before considering a change done.
 - A `Group` stores member IDs as a plain array. `Group::addMember` only adds a member if
   the user **currently exists** (it calls `UserProvider::getInstance()->exists(...)`),
   and de-duplicates. Membership checks are case-insensitive via `Sanitizer`.
-- Deleting a user does **not** yet remove them from groups (see the `// todo` in
-  `UserProvider::delete`). Be aware of this stale-membership gap.
+- Deleting a user via `UserProvider::delete` also strips them from every group (it reads
+  all groups through `GroupProvider::getInstance()` and updates any that contained the id),
+  so no stale membership references are left behind.
 
 ### Sanitization & validation
 - Centralize input cleaning in `Sanitizer`: `sanitizeString` lowercases, trims, converts
@@ -183,10 +187,12 @@ Match the existing code — it is deliberately plain, framework-light PHP:
 
 ## Gotchas / things to know
 
-- **No PATCH support** and **no pagination** — `listUsers`/`listGroups` return everything;
-  `startIndex`/`count` handling is stubbed out in comments. SCIM `filter` support is
-  minimal: only `attribute eq "value"` is parsed (users only), and
-  `ServiceProviderConfig` reports `filter.supported = false`.
+- **Pagination**: `listUsers`/`listGroups` honor 1-based `startIndex` and `count`
+  (via the shared `buildListResponse` helper); `totalResults` reflects the full filtered
+  count before slicing. **Filtering**: a single `attribute eq "value"` expression is
+  supported for **both** users and groups (shared `findByFilter` helper); anything else is
+  rejected with 400. `ServiceProviderConfig` reports `filter.supported = true`
+  (`maxResults = SCIM::MAX_FILTER_RESULTS`). Sort and bulk remain unsupported.
 - **Location URLs** are derived from `$_SERVER` (`HTTP_HOST`, `SCRIPT_NAME`), so entity
   `toSCIM()` output depends on request context; expect empties in pure unit contexts.
 - Passwords are hashed with `password_hash(PASSWORD_DEFAULT)`; `passwordHash` is stored in

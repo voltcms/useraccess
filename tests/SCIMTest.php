@@ -6,19 +6,18 @@ use VoltCMS\UserAccess\UserProviderInterface;
 use VoltCMS\UserAccess\GroupProviderInterface;
 use VoltCMS\UserAccess\SessionAuth;
 use VoltCMS\UserAccess\Group;
+use VoltCMS\UserAccess\User;
 
 class SCIMTest extends TestCase
 {
     private $scim;
     private $userProviderMock;
     private $groupProviderMock;
-    private $sessionAuthMock;
 
     protected function setUp(): void
     {
         $this->userProviderMock = $this->createMock(UserProviderInterface::class);
         $this->groupProviderMock = $this->createMock(GroupProviderInterface::class);
-        $this->sessionAuthMock = $this->createMock(SessionAuth::class);
 
         $this->scim = new SCIM($this->userProviderMock, $this->groupProviderMock);
     }
@@ -163,5 +162,146 @@ class SCIMTest extends TestCase
 
         $this->expectOutputRegex('/"displayName":"Test Group"/');
         $this->scim->listGroups([]);
+    }
+
+    public function testPatchUserReplaceDisplayName()
+    {
+        $userID = '11111111-1111-1111-1111-111111111111';
+        $userData = [
+            'schemas' => ['urn:ietf:params:scim:schemas:core:2.0:User'],
+            'id' => $userID,
+            'displayName' => 'Patched Name',
+        ];
+
+        $user = $this->createMock(User::class);
+        $user->expects($this->once())->method('setDisplayName')->with('Patched Name');
+        $user->method('toSCIM')->willReturn($userData);
+
+        $this->userProviderMock->expects($this->once())->method('exists')->with('id', $userID)->willReturn(true);
+        $this->userProviderMock->expects($this->once())->method('read')->with('id', $userID)->willReturn($user);
+        $this->userProviderMock->expects($this->once())->method('update')->willReturn($user);
+
+        $body = json_encode([
+            'schemas' => ['urn:ietf:params:scim:api:messages:2.0:PatchOp'],
+            'Operations' => [
+                ['op' => 'replace', 'path' => 'displayName', 'value' => 'Patched Name'],
+            ],
+        ]);
+
+        $this->expectOutputRegex('/"displayName":"Patched Name"/');
+        $this->scim->patchUser($body, $userID);
+    }
+
+    public function testPatchUserReplaceWithoutPathAppliesEachAttribute()
+    {
+        $userID = '22222222-2222-2222-2222-222222222222';
+        $userData = ['schemas' => ['urn:ietf:params:scim:schemas:core:2.0:User'], 'id' => $userID];
+
+        $user = $this->createMock(User::class);
+        $user->expects($this->once())->method('setDisplayName')->with('Multi');
+        $user->expects($this->once())->method('setActive')->with(true);
+        $user->method('toSCIM')->willReturn($userData);
+
+        $this->userProviderMock->method('exists')->willReturn(true);
+        $this->userProviderMock->method('read')->willReturn($user);
+        $this->userProviderMock->expects($this->once())->method('update')->willReturn($user);
+
+        $body = json_encode([
+            'schemas' => ['urn:ietf:params:scim:api:messages:2.0:PatchOp'],
+            'Operations' => [
+                ['op' => 'replace', 'value' => ['displayName' => 'Multi', 'active' => true]],
+            ],
+        ]);
+
+        $this->expectOutputRegex('/"id":"22222222-2222-2222-2222-222222222222"/');
+        $this->scim->patchUser($body, $userID);
+    }
+
+    public function testPatchGroupAddMember()
+    {
+        $groupID = '33333333-3333-3333-3333-333333333333';
+        $memberID = '44444444-4444-4444-4444-444444444444';
+        $groupData = ['schemas' => ['urn:ietf:params:scim:schemas:core:2.0:Group'], 'id' => $groupID];
+
+        $group = $this->createMock(Group::class);
+        $group->expects($this->once())->method('addMember')->with($memberID);
+        $group->method('toSCIM')->willReturn($groupData);
+
+        $this->groupProviderMock->expects($this->once())->method('exists')->with('id', $groupID)->willReturn(true);
+        $this->groupProviderMock->expects($this->once())->method('read')->with('id', $groupID)->willReturn($group);
+        $this->groupProviderMock->expects($this->once())->method('update')->willReturn($group);
+
+        $body = json_encode([
+            'schemas' => ['urn:ietf:params:scim:api:messages:2.0:PatchOp'],
+            'Operations' => [
+                ['op' => 'add', 'path' => 'members', 'value' => [['value' => $memberID]]],
+            ],
+        ]);
+
+        $this->expectOutputRegex('/"id":"33333333-3333-3333-3333-333333333333"/');
+        $this->scim->patchGroup($body, $groupID);
+    }
+
+    public function testPatchGroupRemoveMemberByFilterPath()
+    {
+        $groupID = '55555555-5555-5555-5555-555555555555';
+        $memberID = '66666666-6666-6666-6666-666666666666';
+        $groupData = ['schemas' => ['urn:ietf:params:scim:schemas:core:2.0:Group'], 'id' => $groupID];
+
+        $group = $this->createMock(Group::class);
+        $group->expects($this->once())->method('removeMember')->with($memberID);
+        $group->method('toSCIM')->willReturn($groupData);
+
+        $this->groupProviderMock->method('exists')->willReturn(true);
+        $this->groupProviderMock->method('read')->willReturn($group);
+        $this->groupProviderMock->expects($this->once())->method('update')->willReturn($group);
+
+        $body = json_encode([
+            'schemas' => ['urn:ietf:params:scim:api:messages:2.0:PatchOp'],
+            'Operations' => [
+                ['op' => 'remove', 'path' => 'members[value eq "' . $memberID . '"]'],
+            ],
+        ]);
+
+        $this->expectOutputRegex('/"id":"55555555-5555-5555-5555-555555555555"/');
+        $this->scim->patchGroup($body, $groupID);
+    }
+
+    public function testListUsersPaginationSlicesResults()
+    {
+        $users = [];
+        foreach (['user-1', 'user-2', 'user-3'] as $id) {
+            $stub = $this->createStub(User::class);
+            $stub->method('toSCIM')->willReturn(['id' => $id]);
+            $users[] = $stub;
+        }
+        $this->userProviderMock->expects($this->once())->method('readAll')->willReturn($users);
+
+        ob_start();
+        $this->scim->listUsers(['startIndex' => 2, 'count' => 1]);
+        $out = ob_get_clean();
+
+        $this->assertStringContainsString('"totalResults":3', $out);
+        $this->assertStringContainsString('"startIndex":2', $out);
+        $this->assertStringContainsString('"itemsPerPage":1', $out);
+        $this->assertStringContainsString('"id":"user-2"', $out);
+        $this->assertStringNotContainsString('"id":"user-1"', $out);
+        $this->assertStringNotContainsString('"id":"user-3"', $out);
+    }
+
+    public function testListGroupsFilterUsesProviderFind()
+    {
+        $group = $this->createStub(Group::class);
+        $group->method('toSCIM')->willReturn(['id' => 'group-x', 'displayName' => 'Admins']);
+
+        $this->groupProviderMock->expects($this->once())->method('find')->with('displayName', 'Admins')->willReturn([$group]);
+        $this->groupProviderMock->expects($this->never())->method('readAll');
+
+        ob_start();
+        $this->scim->listGroups(['filter' => 'displayName eq "Admins"']);
+        $out = ob_get_clean();
+
+        $this->assertStringContainsString('"totalResults":1', $out);
+        $this->assertStringContainsString('"id":"group-x"', $out);
     }
 }

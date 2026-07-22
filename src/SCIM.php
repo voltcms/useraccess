@@ -8,6 +8,8 @@ use \Bramus\Router\Router;
 class SCIM
 {
 
+    const MAX_FILTER_RESULTS = 200;
+
     private $userProvider;
     private $groupProvider;
     private $sessionAuth;
@@ -59,9 +61,9 @@ class SCIM
         $this->router->put('/scim/users/([a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12})', function ($id) {
             $this->putUser(file_get_contents('php://input'), $id);
         });
-        // $this->router->patch('/scim/users/([a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12})', function($id) {
-        //     $this->patchUser(file_get_contents('php://input'), $id);
-        // });
+        $this->router->patch('/scim/users/([a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12})', function ($id) {
+            $this->patchUser(file_get_contents('php://input'), $id);
+        });
         $this->router->delete('/scim/users/([a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12})', function ($id) {
             $this->deleteUser($id);
         });
@@ -79,9 +81,9 @@ class SCIM
         $this->router->put('/scim/groups/([a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12})', function ($id) {
             $this->putGroup(file_get_contents('php://input'), $id);
         });
-        // $this->router->patch('/scim/groups/([a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12})', function($id) {
-        //     $this->patchGroup(file_get_contents('php://input'), $id);
-        // });
+        $this->router->patch('/scim/groups/([a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12})', function ($id) {
+            $this->patchGroup(file_get_contents('php://input'), $id);
+        });
         $this->router->delete('/scim/groups/([a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12})', function ($id) {
             $this->deleteGroup($id);
         });
@@ -229,35 +231,8 @@ class SCIM
 
     public function listUsers($options)
     {
-        $payload = [];
-        if (array_key_exists('filter', $options)) {
-            list($attribute, $value) = explode(' eq ', $options['filter']);
-            if (str_starts_with($value, '"')) {
-                $value = substr($value, 1);
-            }
-            if (str_ends_with($value, '"')) {
-                $value = substr($value, 0, -1);
-            }
-            $users = $this->userProvider->find($attribute, $value);
-        } else {
-            $users = $this->userProvider->readAll();
-        }
-        $payload['schemas'] = array('urn:ietf:params:scim:api:messages:2.0:ListResponse');
-        $payload['totalResults'] = count($users);
-        $payload['startIndex'] = 1;
-        $payload['itemsPerPage'] = count($users);
-        // if((int) $options['startIndex'] > 0)
-        //     $payload['startIndex'] = (int) $options['startIndex'];
-        // if((int) $options['count'] > 0 && $options['count'] < $totalUsers)
-        //     $payload['itemsPerPage'] = (int) $options['count'];
-        // elseif($totalUsers > 0)
-        //     $payload['itemsPerPage'] = $totalUsers;
-        $payload['Resources'] = [];
-        foreach ($users as $user) {
-            $result = $user->toSCIM();
-            unset($result['_modified']);
-            $payload['Resources'][] = $result;
-        }
+        $users = $this->findByFilter($this->userProvider, $options);
+        $payload = $this->buildListResponse($users, $options);
         header('Content-Type: application/json', true, 200);
         echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
     }
@@ -293,43 +268,39 @@ class SCIM
         echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
     }
 
-    // public function patchUser($requestBody, $userID)
-    // {
-    //     $requestBody = json_decode($requestBody, 1);
-    //     $userAttributes = $this->db->getResourceAttributes($userID);
-    //     foreach ($requestBody as $key => $value) {
-    //         if (in_array($key, array('schemas', 'id', 'groups')))
-    //             continue;
-    //         elseif ($key == "Operations" && is_array($value))
-    //             foreach ($value as $val) {
-    //                 if ($val['op'] == "replace") {
-    //                     foreach ($val['value'] as $a => $v) {
-    //                         if ($a == "userName")
-    //                             if ($this->db->getUserID($v, "2.0") != $userID)
-    //                                 exit($this->throwError(400, "Could not modify userName. There is already an existing user " . $a . " with the same name."));
-    //                         $schemas = $this->db->getResourceSchemas($userID);
-    //                         $this->db->deleteResourceAttribute($userID, $a);
-    //                         $this->db->addResourceAttribute($userID, $a, json_encode($v));
-    //                         if ($schemas[$a] != "")
-    //                             $this->db->addResourceSchema($userID, $a);
-    //                     }
-    //                 } elseif ($val['op'] == "add")
-    //                     foreach ($val['value'] as $a => $v) {
-    //                         if ($a == "userName")
-    //                             if ($this->db->getUserID($v, "2.0") != $userID)
-    //                                 exit($this->throwError(400, "Could not modify userName. There is already an existing user " . $a . " with the same name."));
-    //                         $this->db->addResourceAttribute($userID, $a, json_encode($v));
-    //                     }
-    //                 elseif ($val['op'] == "remove") {
-    //                     $a = "todo";
-    //                     $this->db->deleteResourceAttribute($userID, $a);
-    //                 }
-    //             }
-    //     }
-    //     $this->db->UpdateTimestamp($userID);
-    //     header("Content-Type: application/json", true, 200);
-    //     echo $this->getUser($userID, 1);
-    // }
+    public function patchUser($requestBody, $userID)
+    {
+        if (!$this->userProvider->exists('id', $userID)) {
+            exit($this->throwError(404, "Selected user does not exist."));
+        }
+        $operations = $this->parsePatchPayload(json_decode($requestBody, 1));
+        $user = $this->userProvider->read('id', $userID);
+        try {
+            foreach ($operations as $operation) {
+                $op = strtolower($operation['op'] ?? '');
+                $path = array_key_exists('path', $operation) ? $operation['path'] : null;
+                $value = array_key_exists('value', $operation) ? $operation['value'] : null;
+                switch ($op) {
+                    case 'add':
+                    case 'replace':
+                        $this->applyUserAddReplace($user, $userID, $path, $value);
+                        break;
+                    case 'remove':
+                        $this->applyUserRemove($user, $path);
+                        break;
+                    default:
+                        exit($this->throwError(400, "Unsupported PATCH operation '" . htmlentities((string) $op, ENT_QUOTES) . "'."));
+                }
+            }
+            $user = $this->userProvider->update($user);
+        } catch (Exception $e) {
+            exit($this->throwError($this->statusForException($e->getMessage()), $e->getMessage()));
+        }
+        $payload = $user->toSCIM();
+        unset($payload['_modified']);
+        header("Content-Type: application/json", true, 200);
+        echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
+    }
 
     public function deleteUser($userID)
     {
@@ -618,77 +589,35 @@ class SCIM
 
     public function listGroups($options)
     {
-        $payload = [];
-        $groups = $this->groupProvider->readAll();
-        $payload['schemas'] = array('urn:ietf:params:scim:api:messages:2.0:ListResponse');
-        $payload['totalResults'] = count($groups);
-        $payload['startIndex'] = 1;
-        $payload['itemsPerPage'] = count($groups);
-        // if((int) $options['startIndex'] > 0)
-        //     $payload['startIndex'] = (int) $options['startIndex'];
-        // if((int) $options['count'] > 0 && $options['count'] < $totalUsers)
-        //     $payload['itemsPerPage'] = (int) $options['count'];
-        // elseif($totalUsers > 0)
-        //     $payload['itemsPerPage'] = $totalUsers;
-        $payload['Resources'] = [];
-        foreach ($groups as $group) {
-            $result = $group->toSCIM();
-            unset($result['_modified']);
-            $payload['Resources'][] = $result;
-        }
+        $groups = $this->findByFilter($this->groupProvider, $options);
+        $payload = $this->buildListResponse($groups, $options);
         header('Content-Type: application/json', true, 200);
         echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
     }
 
-    // public function patchGroup($requestBody, $groupID)
-    // {
-    //     $requestBody = json_decode($requestBody, 1);
-    //     $groupAttributes = $this->db->getResourceAttributes($groupID);
-    //     foreach ($requestBody as $key => $value) {
-    //         if (in_array($key, array('schemas', 'id', 'groups')))
-    //             continue;
-    //         elseif ($key == "Operations" && is_array($value))
-    //             foreach ($value as $val) {
-    //                 if ($val['path'] == "members") {
-    //                     if ($val['op'] == "replace") {
-    //                         $this->db->deleteAllGroupMembership($groupID);
-    //                         foreach ($val['value'] as $members)
-    //                             $this->db->addGroupMember($groupID, $members['value']);
-    //                     } elseif ($val['op'] == "add")
-    //                         foreach ($val['value'] as $members)
-    //                             $this->db->addGroupMember($groupID, $members['value']);
-    //                     elseif ($val['op'] == "remove")
-    //                         foreach ($val['value'] as $members)
-    //                             $this->db->deleteGroupMembership($groupID, $members['value']);
-    //                 } else {
-    //                     if ($val['op'] == "replace") {
-    //                         foreach ($val['value'] as $a => $v) {
-    //                             $schemas = $this->db->getResourceSchemas($groupID);
-    //                             $this->db->deleteResourceAttribute($groupID, $a);
-    //                             $this->db->addResourceAttribute($groupID, $a, json_encode($v));
-    //                             if ($schemas[$a] != "")
-    //                                 $this->db->addResourceSchema($groupID, $a);
-    //                         }
-    //                     } elseif ($val['op'] == "add")
-    //                         foreach ($val['value'] as $a => $v) {
-    //                             $this->db->addResourceAttribute($groupID, $a, json_encode($v));
-    //                         }
-    //                     elseif ($val['op'] == "remove") {
-    //                         if (substr($val['path'], 0, 7) == "members") {
-    //                             preg_match('/[a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12}/', $val['path'], $matches);
-    //                             $this->db->deleteGroupMembership($groupID, $matches[0]);
-    //                         } else {
-    //                             $a = "todo";
-    //                             $this->db->deleteResourceAttribute($groupID, $a);
-    //                         }
-    //                     }
-    //                 }
-    //             }
-    //     }
-    //     $this->db->updateTimestamp($groupID);
-    //     header("Content-Type: application/json", true, 200);
-    //     $this->getGroup($groupID);
-    // }
+    public function patchGroup($requestBody, $groupID)
+    {
+        if (!$this->groupProvider->exists('id', $groupID)) {
+            exit($this->throwError(404, "This group does not exist."));
+        }
+        $operations = $this->parsePatchPayload(json_decode($requestBody, 1));
+        $group = $this->groupProvider->read('id', $groupID);
+        try {
+            foreach ($operations as $operation) {
+                $op = strtolower($operation['op'] ?? '');
+                $path = array_key_exists('path', $operation) ? $operation['path'] : null;
+                $value = array_key_exists('value', $operation) ? $operation['value'] : null;
+                $this->applyGroupOperation($group, $groupID, $op, $path, $value);
+            }
+            $group = $this->groupProvider->update($group);
+        } catch (Exception $e) {
+            exit($this->throwError($this->statusForException($e->getMessage()), $e->getMessage()));
+        }
+        $payload = $group->toSCIM();
+        unset($payload['_modified']);
+        header("Content-Type: application/json", true, 200);
+        echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
+    }
 
     public function putGroup($requestBody, $groupID)
     {
@@ -759,9 +688,9 @@ class SCIM
         header("Content-Type: application/json", true, 200);
         $payload = [];
         $payload['schemas'] = array("urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig");
-        $payload['patch'] = array("supported" => false);
+        $payload['patch'] = array("supported" => true);
         $payload['bulk'] = array("supported" => false, "maxOperations" => 0, "maxPayloadSize" => 0);
-        $payload['filter'] = array("supported" => false, "maxResults" => 0);
+        $payload['filter'] = array("supported" => true, "maxResults" => self::MAX_FILTER_RESULTS);
         $payload['changePassword'] = array("supported" => true);
         $payload['sort'] = array("supported" => false);
         $payload['etag'] = array("supported" => true);
@@ -770,6 +699,313 @@ class SCIM
             array("name" => "HTTP Basic", "description" => "Authentication Scheme using the Http Basic Standard", "type" => "httpbasic")
         );
         echo json_encode($payload);
+    }
+
+    // Runs an optional `attribute eq "value"` filter against a provider, or
+    // returns all entries when no filter is supplied.
+    private function findByFilter($provider, $options): array
+    {
+        if (array_key_exists('filter', $options) && $options['filter'] !== '') {
+            if (!str_contains($options['filter'], ' eq ')) {
+                exit($this->throwError(400, "Only the 'attribute eq \"value\"' filter is supported."));
+            }
+            list($attribute, $value) = explode(' eq ', $options['filter'], 2);
+            $attribute = trim($attribute);
+            $value = trim($value);
+            if (str_starts_with($value, '"')) {
+                $value = substr($value, 1);
+            }
+            if (str_ends_with($value, '"')) {
+                $value = substr($value, 0, -1);
+            }
+            return $provider->find($attribute, $value);
+        }
+        return $provider->readAll();
+    }
+
+    // Builds a SCIM ListResponse, applying 1-based `startIndex` and `count`
+    // pagination from the query options. `totalResults` always reflects the
+    // full (filtered) result count before pagination.
+    private function buildListResponse(array $entries, $options): array
+    {
+        $total = count($entries);
+        $startIndex = 1;
+        if (array_key_exists('startIndex', $options) && is_numeric($options['startIndex']) && (int) $options['startIndex'] > 0) {
+            $startIndex = (int) $options['startIndex'];
+        }
+        $offset = $startIndex - 1;
+        if ($offset > 0) {
+            $entries = array_slice($entries, $offset);
+        }
+        if (array_key_exists('count', $options) && is_numeric($options['count'])) {
+            $count = (int) $options['count'];
+            if ($count < 0) {
+                $count = 0;
+            }
+            $entries = array_slice($entries, 0, $count);
+        }
+        $resources = [];
+        foreach ($entries as $entry) {
+            $result = $entry->toSCIM();
+            unset($result['_modified']);
+            $resources[] = $result;
+        }
+        return array(
+            'schemas' => array('urn:ietf:params:scim:api:messages:2.0:ListResponse'),
+            'totalResults' => $total,
+            'startIndex' => $startIndex,
+            'itemsPerPage' => count($resources),
+            'Resources' => $resources,
+        );
+    }
+
+    // Validates a SCIM PatchOp body and returns its Operations list.
+    private function parsePatchPayload($payload): array
+    {
+        if (!$payload || !is_array($payload)) {
+            exit($this->throwError(400, "Incorrect request was sent to the SCIM server."));
+        }
+        if (empty($payload['schemas']) || !is_array($payload['schemas']) || !in_array("urn:ietf:params:scim:api:messages:2.0:PatchOp", $payload['schemas'])) {
+            exit($this->throwError(400, "The PATCH request must use the PatchOp schema."));
+        }
+        if (!array_key_exists('Operations', $payload) || !is_array($payload['Operations']) || count($payload['Operations']) === 0) {
+            exit($this->throwError(400, "The PATCH request did not contain any Operations."));
+        }
+        foreach ($payload['Operations'] as $operation) {
+            if (!is_array($operation) || !array_key_exists('op', $operation)) {
+                exit($this->throwError(400, "Each PATCH operation must define an 'op'."));
+            }
+        }
+        return $payload['Operations'];
+    }
+
+    private function applyUserAddReplace($user, $userID, $path, $value): void
+    {
+        if ($path === null || $path === '') {
+            if (!is_array($value)) {
+                exit($this->throwError(400, "A PATCH add/replace without a path requires an object value."));
+            }
+            foreach ($value as $attributePath => $attributeValue) {
+                $this->setUserAttribute($user, $userID, $attributePath, $attributeValue);
+            }
+            return;
+        }
+        $this->setUserAttribute($user, $userID, $path, $value);
+    }
+
+    private function applyUserRemove($user, $path): void
+    {
+        switch ($path) {
+            case 'displayName':
+                $user->setDisplayName('');
+                break;
+            case 'name.familyName':
+            case 'familyName':
+                $user->setFamilyName('');
+                break;
+            case 'name.givenName':
+            case 'givenName':
+                $user->setGivenName('');
+                break;
+            case 'email':
+            case 'emails':
+                $user->setEmail('');
+                break;
+            case 'active':
+                $user->setActive(false);
+                break;
+            default:
+                exit($this->throwError(400, "The attribute '" . htmlentities((string) $path, ENT_QUOTES) . "' cannot be removed via PATCH."));
+        }
+    }
+
+    private function setUserAttribute($user, $userID, $path, $value): void
+    {
+        switch ($path) {
+            case 'userName':
+                if ($this->userProvider->exists('userName', $value)) {
+                    $existing = $this->userProvider->read('userName', $value);
+                    if ($existing->getId() != $userID) {
+                        exit($this->throwError(400, "The username has already been taken by another user."));
+                    }
+                }
+                $user->setUserName($value);
+                break;
+            case 'displayName':
+                $user->setDisplayName($value);
+                break;
+            case 'name.familyName':
+            case 'familyName':
+                $user->setFamilyName($value);
+                break;
+            case 'name.givenName':
+            case 'givenName':
+                $user->setGivenName($value);
+                break;
+            case 'active':
+                $user->setActive($this->toBool($value));
+                break;
+            case 'password':
+                $user->setPassword($value);
+                break;
+            case 'email':
+            case 'emails':
+                $user->setEmail($this->extractEmail($value));
+                break;
+            default:
+                exit($this->throwError(400, "The attribute '" . htmlentities((string) $path, ENT_QUOTES) . "' cannot be modified via PATCH."));
+        }
+    }
+
+    private function extractEmail($value): string
+    {
+        if (is_array($value)) {
+            $first = $value[0] ?? $value;
+            if (is_array($first) && array_key_exists('value', $first)) {
+                return (string) $first['value'];
+            }
+            if (is_string($first)) {
+                return $first;
+            }
+            return '';
+        }
+        return (string) $value;
+    }
+
+    private function applyGroupOperation($group, $groupID, $op, $path, $value): void
+    {
+        $targetsMembers = false;
+        $memberFilterId = null;
+        if (is_string($path)) {
+            if ($path === 'members') {
+                $targetsMembers = true;
+            } elseif (str_starts_with($path, 'members[')) {
+                $targetsMembers = true;
+                if (preg_match('/[a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12}/', $path, $matches)) {
+                    $memberFilterId = $matches[0];
+                }
+            }
+        }
+
+        if ($targetsMembers) {
+            switch ($op) {
+                case 'add':
+                    foreach ($this->extractMemberIds($value) as $id) {
+                        $group->addMember($id);
+                    }
+                    break;
+                case 'replace':
+                    $group->setMembers($this->extractMemberIds($value));
+                    break;
+                case 'remove':
+                    if ($memberFilterId !== null) {
+                        $group->removeMember($memberFilterId);
+                    } elseif ($value !== null) {
+                        foreach ($this->extractMemberIds($value) as $id) {
+                            $group->removeMember($id);
+                        }
+                    } else {
+                        $group->setMembers([]);
+                    }
+                    break;
+                default:
+                    exit($this->throwError(400, "Unsupported PATCH operation '" . htmlentities((string) $op, ENT_QUOTES) . "'."));
+            }
+            return;
+        }
+
+        if ($op === 'add' || $op === 'replace') {
+            if ($path === 'displayName') {
+                $this->setGroupDisplayName($group, $groupID, $value);
+                return;
+            }
+            if ($path === null || $path === '') {
+                if (!is_array($value)) {
+                    exit($this->throwError(400, "A PATCH add/replace without a path requires an object value."));
+                }
+                foreach ($value as $attribute => $attributeValue) {
+                    if ($attribute === 'displayName') {
+                        $this->setGroupDisplayName($group, $groupID, $attributeValue);
+                    } elseif ($attribute === 'members') {
+                        $group->setMembers($this->extractMemberIds($attributeValue));
+                    } else {
+                        exit($this->throwError(400, "The attribute '" . htmlentities((string) $attribute, ENT_QUOTES) . "' cannot be modified via PATCH."));
+                    }
+                }
+                return;
+            }
+            exit($this->throwError(400, "The attribute '" . htmlentities((string) $path, ENT_QUOTES) . "' cannot be modified via PATCH."));
+        }
+
+        exit($this->throwError(400, "Unsupported PATCH operation '" . htmlentities((string) $op, ENT_QUOTES) . "' for path '" . htmlentities((string) $path, ENT_QUOTES) . "'."));
+    }
+
+    // Normalizes a SCIM `members` value (list of {value:...} objects, a single
+    // such object, or plain id strings) into a flat array of member ids.
+    private function extractMemberIds($value): array
+    {
+        $ids = [];
+        if (is_array($value)) {
+            if (array_key_exists('value', $value) && !is_array($value['value'])) {
+                $ids[] = $value['value'];
+            } else {
+                foreach ($value as $member) {
+                    if (is_array($member) && array_key_exists('value', $member)) {
+                        $ids[] = $member['value'];
+                    } elseif (is_string($member)) {
+                        $ids[] = $member;
+                    }
+                }
+            }
+        } elseif (is_string($value)) {
+            $ids[] = $value;
+        }
+        return $ids;
+    }
+
+    private function setGroupDisplayName($group, $groupID, $value): void
+    {
+        if (!is_string($value) || $value === '') {
+            exit($this->throwError(400, "The 'displayName' value is invalid."));
+        }
+        if ($group->getDisplayName() === 'Administrators' && $value !== 'Administrators') {
+            exit($this->throwError(403, "The Administrators group cannot be renamed."));
+        }
+        if ($this->groupProvider->exists('displayName', $value)) {
+            $existing = $this->groupProvider->read('displayName', $value);
+            if ($existing->getId() != $groupID) {
+                exit($this->throwError(400, "The displayname has already been taken by another group."));
+            }
+        }
+        $group->setDisplayName($value);
+    }
+
+    private function toBool($value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+        if (is_int($value)) {
+            return $value === 1;
+        }
+        if (is_string($value)) {
+            return in_array(strtolower($value), array('1', 'true', 'yes', 'on'), true);
+        }
+        return (bool) $value;
+    }
+
+    // Maps a domain exception code (thrown by entities/providers) to an HTTP
+    // status for PATCH error responses.
+    private function statusForException(string $code): int
+    {
+        switch ($code) {
+            case 'EXCEPTION_DUPLICATE_EMAIL':
+            case 'EXCEPTION_USER_ALREADY_EXIST':
+            case 'EXCEPTION_GROUP_ALREADY_EXIST':
+                return 409;
+            default:
+                return 400;
+        }
     }
 
     public function throwError($statusCode, $description)
