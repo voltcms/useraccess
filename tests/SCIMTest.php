@@ -23,6 +23,16 @@ class SCIMTest extends TestCase
         $this->scim = new SCIM($this->userProviderMock, $this->groupProviderMock);
     }
 
+    protected function tearDown(): void
+    {
+        // SCIM's constructor initializes the SessionAuth singleton with these
+        // mock providers. Reset it so the mocks don't leak into other tests
+        // (e.g. UserProviderTest) that build SessionAuth with real providers.
+        $instance = new \ReflectionProperty(SessionAuth::class, 'instance');
+        $instance->setAccessible(true);
+        $instance->setValue(null, null);
+    }
+
     public function testCreateGroup()
     {
         $groupData = [
@@ -117,15 +127,15 @@ class SCIMTest extends TestCase
 
         $this->groupProviderMock
             ->expects($this->once())
-            ->method('exists')
-            ->with('id', $groupID)
-            ->willReturn(true);
-
-        $this->groupProviderMock
-            ->expects($this->once())
             ->method('read')
             ->with('id', $groupID)
             ->willReturn($group);
+
+        $this->groupProviderMock
+            ->expects($this->once())
+            ->method('exists')
+            ->with('displayName', 'Updated Group')
+            ->willReturn(false);
 
         $this->groupProviderMock
             ->expects($this->once())
