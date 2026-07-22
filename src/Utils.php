@@ -8,7 +8,7 @@ class Utils
     const ACCESS_STATUS_EVERYONE = 'everyone';
     const ACCESS_STATUS_LOGGED_IN = 'logged_in';
     const ACCESS_STATUS_LOGGED_IN_MEMBER_OF_GROUP = 'logged_in_member_of_group';
-    const ACCESS_STATUS_LOGGED_IN_NOT_MEMBER_OF_GROUP = 'logged_in_member_of_group';
+    const ACCESS_STATUS_LOGGED_IN_NOT_MEMBER_OF_GROUP = 'logged_in_not_member_of_group';
 
     public static function isContentVisible($sessionAuth, $user_status, $logged_in_member_of_group, $logged_in_not_member_of_group)
     {

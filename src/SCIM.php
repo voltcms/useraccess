@@ -15,13 +15,13 @@ class SCIM
     private $enforceAuthentication;
     private $loggedInUser;
 
-    public function __construct(UserProviderInterface $userProvider, GroupProviderInterface $groupProvider)
+    public function __construct(UserProviderInterface $userProvider, GroupProviderInterface $groupProvider, bool $enforceAuthentication = false)
     {
         $this->userProvider = $userProvider;
         $this->groupProvider = $groupProvider;
         $this->sessionAuth = SessionAuth::getInstance($this->userProvider, $this->groupProvider);
         $this->router = new Router();
-        $this->enforceAuthentication = false;
+        $this->enforceAuthentication = $enforceAuthentication;
     }
 
     public function runRouter()
@@ -346,11 +346,11 @@ class SCIM
             exit($this->throwError(400, "Incorrect request was sent to the SCIM server."));
         }
         if ($userCheck == false) {
-            if ($this->userProvider->exists('userName', $payload['userName'])) {
+            if (array_key_exists('userName', $payload) && $this->userProvider->exists('userName', $payload['userName'])) {
                 exit($this->throwError(409, "User with username " . $payload['userName'] . " already exists."));
             }
         }
-        if ($payload['schemas'] == "") {
+        if (empty($payload['schemas']) || !is_array($payload['schemas'])) {
             exit($this->throwError(400, "No schema was found in the request for user creation process."));
         }
         if (!in_array("urn:ietf:params:scim:schemas:core:2.0:User", $payload['schemas'])) {
@@ -741,14 +741,14 @@ class SCIM
             exit($this->throwError(400, "Incorrect request was sent to the SCIM server."));
         }
         if ($groupCheck == false) {
-            if ($this->groupProvider->exists('displayName', $payload['displayName'])) {
+            if (array_key_exists('displayName', $payload) && $this->groupProvider->exists('displayName', $payload['displayName'])) {
                 exit($this->throwError(409, "Group with displayname " . $payload['displayName'] . " already exists."));
             }
         }
-        if ($payload['schemas'] == "" || !in_array("urn:ietf:params:scim:schemas:core:2.0:Group", $payload['schemas'])) {
+        if (empty($payload['schemas']) || !is_array($payload['schemas']) || !in_array("urn:ietf:params:scim:schemas:core:2.0:Group", $payload['schemas'])) {
             exit($this->throwError(400, "Incorrect schema was provided in the request."));
         }
-        if ($payload['displayName'] == "") {
+        if (empty($payload['displayName'])) {
             exit($this->throwError(400, "No displayName was provided in the request."));
         }
         return $payload;
