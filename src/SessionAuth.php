@@ -69,6 +69,7 @@ class SessionAuth
             $session_settings = [
                 'httponly' => true,
                 'samesite' => 'Strict',
+                'secure' => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on'),
             ];
             session_set_cookie_params($session_settings);
             session_start();
@@ -90,11 +91,7 @@ class SessionAuth
                 $_SESSION[self::UA_ATTEMPTS] = 0;
             }
             if (!array_key_exists(self::UA_CSRF, $_SESSION)) {
-                if (function_exists('random_bytes')) {
-                    $_SESSION[self::UA_CSRF] = bin2hex(random_bytes(32));
-                } else {
-                    $_SESSION[self::UA_CSRF] = bin2hex(rand());
-                }
+                $_SESSION[self::UA_CSRF] = bin2hex(random_bytes(32));
             }
             if (array_key_exists(self::HTTP_X_CSRF_TOKEN, $_SERVER) && $_SERVER[self::HTTP_X_CSRF_TOKEN] === 'fetch') {
                 $this->setHeader(self::UA_CSRF, $_SESSION[self::UA_CSRF]);
@@ -165,6 +162,11 @@ class SessionAuth
             if ($user !== null && $user->isActive() && $_SESSION[self::UA_ATTEMPTS] < $this->maxLoginAttempts + 1) {
                 if ($user->verifyPassword($password)) {
                     if (empty($csrf_token) || hash_equals($_SESSION[self::UA_CSRF], $csrf_token)) {
+                        // Prevent session fixation: issue a fresh session id on
+                        // privilege change (successful authentication).
+                        if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
+                            session_regenerate_id(true);
+                        }
                         $this->setSessionInfo($user, 0);
                         $result = true;
                     }

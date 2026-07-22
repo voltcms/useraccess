@@ -113,9 +113,9 @@ Always run `composer test` yourself before considering a change done.
   required `userName`/`displayName`, type-checking of optional SCIM fields, uniqueness).
 - `enforceAuthentication` (default **false**) optionally gates the whole router: it
   requires a logged-in session user OR HTTP Basic credentials, and that the user
-  `isAdmin()`. The demo constructs `new SCIM($userProvider, $groupProvider, false)` —
-  note the constructor currently only accepts two args, so that third `false` is ignored;
-  flip the flag on the object if you need enforcement.
+  `isAdmin()`. It is the **third constructor argument** —
+  `new SCIM($userProvider, $groupProvider, true)` — defaulting to `false`, so the demo's
+  `new SCIM($userProvider, $groupProvider, false)` keeps the router open.
 
 ### Authentication
 - **`SessionAuth`** (singleton) manages PHP `$_SESSION` login state. Cookies are set
@@ -194,8 +194,11 @@ Match the existing code — it is deliberately plain, framework-light PHP:
 - The demo seeds an `Administrator` user on first run with a hardcoded password — that is
   demo-only; never replicate hardcoded credentials in library code.
 - `RestApp.php` is dead code (fully commented). The live router is `SCIM.php`.
-- `Utils::ACCESS_STATUS_LOGGED_IN_NOT_MEMBER_OF_GROUP` and
-  `..._MEMBER_OF_GROUP` currently share the same string value — a latent bug; be careful
-  if you rely on distinguishing those two access states.
-</content>
-</invoke>
+- `Utils::ACCESS_STATUS_LOGGED_IN_NOT_MEMBER_OF_GROUP` now has a **distinct** value
+  (`logged_in_not_member_of_group`) from `..._MEMBER_OF_GROUP`; earlier revisions shared
+  one string, which broke the "not member of group" access state. `UtilsTest` guards this.
+- Session cookies are set `httponly`, `samesite=Strict`, and `secure` under HTTPS;
+  `SessionAuth::login()` calls `session_regenerate_id(true)` on success (session-fixation
+  defense). `HeaderAuth::checkBasicAuthentication()` splits credentials on the first `:`
+  only (passwords may contain colons) and performs a constant-time dummy verify for
+  unknown users to avoid username enumeration via timing.
