@@ -45,6 +45,26 @@ document.addEventListener("DOMContentLoaded", function () {
             this.createGroupModal.addEventListener("show.bs.modal", event => {
                 this.loadGroupMembers("#createGroupFormGroupMembers");
             });
+            // Clear any stale error message whenever a modal is (re)opened.
+            document.querySelectorAll(".modal").forEach((modalElement) => {
+                modalElement.addEventListener("show.bs.modal", () => this.clearError(modalElement));
+            });
+        }
+
+        showError = function (modalElement, message) {
+            const alertBox = modalElement.querySelector(".ua-error");
+            if (alertBox) {
+                alertBox.textContent = message;
+                alertBox.classList.remove("d-none");
+            }
+        }
+
+        clearError = function (modalElement) {
+            const alertBox = modalElement.querySelector(".ua-error");
+            if (alertBox) {
+                alertBox.textContent = "";
+                alertBox.classList.add("d-none");
+            }
         }
 
         loadUser = async function (id) {
@@ -60,7 +80,8 @@ document.addEventListener("DOMContentLoaded", function () {
                         document.getElementById("updateUserForm").querySelector("[name=\"familyName\"]").value = data.name.familyName;
                         document.getElementById("updateUserForm").querySelector("[name=\"email\"]").value = data.emails[0].value;
                         document.getElementById("updateUserForm").querySelector("[name=\"active\"]").checked = data.active;
-                        document.getElementById("updateUserForm").querySelector("[name=\"active\"]").value = data.active;
+                        // Note: do not set the checkbox `value` — a checkbox submits "on" when
+                        // checked; overriding value breaks the `== "on"` test in updateUser.
                         // document.getElementById("updateUserForm").querySelector("[name=\"password\"]").value = data.password;
                     }
                 })
@@ -355,10 +376,13 @@ document.addEventListener("DOMContentLoaded", function () {
                     bootstrap.Modal.getInstance(this.createUserModal).hide();
                     this.loadUsers();
                     this.createUserForm.reset();
+                } else {
+                    this.showError(this.createUserModal, (data && data.detail) ? data.detail : "Could not create user.");
                 }
             })
                 .catch(error => {
                     console.error("Error creating user:", error);
+                    this.showError(this.createUserModal, "Network error while creating user.");
                 });
         }
 
@@ -403,10 +427,13 @@ document.addEventListener("DOMContentLoaded", function () {
                     bootstrap.Modal.getInstance(this.updateUserModal).hide();
                     this.loadUsers();
                     this.updateUserForm.reset();
+                } else {
+                    this.showError(this.updateUserModal, (data && data.detail) ? data.detail : "Could not update user.");
                 }
             })
                 .catch(error => {
                     console.error("Error updating user:", error);
+                    this.showError(this.updateUserModal, "Network error while updating user.");
                 });
         }
 
@@ -418,15 +445,20 @@ document.addEventListener("DOMContentLoaded", function () {
                     "Accept": "application/json",
                     "Content-Type": "application/json"
                 }
-            }).then()
-                .then(data => {
-                    if (data.status == 204) {
+            })
+                .then(response => {
+                    if (response.status == 204) {
                         bootstrap.Modal.getInstance(this.deleteUserModal).hide();
                         this.loadUsers();
+                    } else {
+                        response.json()
+                            .then(data => this.showError(this.deleteUserModal, (data && data.detail) ? data.detail : "Could not delete user."))
+                            .catch(() => this.showError(this.deleteUserModal, "Could not delete user."));
                     }
                 })
                 .catch(error => {
                     console.error("Error deleting user:", error);
+                    this.showError(this.deleteUserModal, "Network error while deleting user.");
                 });
         }
 
@@ -461,10 +493,13 @@ document.addEventListener("DOMContentLoaded", function () {
                     bootstrap.Modal.getInstance(this.createGroupModal).hide();
                     this.loadGroups();
                     this.createGroupForm.reset()
+                } else {
+                    this.showError(this.createGroupModal, (data && data.detail) ? data.detail : "Could not create group.");
                 }
             })
                 .catch(error => {
                     console.error("Error creating group:", error);
+                    this.showError(this.createGroupModal, "Network error while creating group.");
                 });
         }
 
@@ -499,10 +534,13 @@ document.addEventListener("DOMContentLoaded", function () {
                     bootstrap.Modal.getInstance(this.updateGroupModal).hide();
                     this.loadGroups();
                     this.updateGroupForm.reset();
+                } else {
+                    this.showError(this.updateGroupModal, (data && data.detail) ? data.detail : "Could not update group.");
                 }
             })
                 .catch(error => {
                     console.error("Error updating group:", error);
+                    this.showError(this.updateGroupModal, "Network error while updating group.");
                 });
         }
 
@@ -514,15 +552,20 @@ document.addEventListener("DOMContentLoaded", function () {
                     "Accept": "application/json",
                     "Content-Type": "application/json"
                 }
-            }).then()
-                .then(data => {
-                    if (data.status == 204) {
+            })
+                .then(response => {
+                    if (response.status == 204) {
                         bootstrap.Modal.getInstance(this.deleteGroupModal).hide();
                         this.loadGroups();
+                    } else {
+                        response.json()
+                            .then(data => this.showError(this.deleteGroupModal, (data && data.detail) ? data.detail : "Could not delete group."))
+                            .catch(() => this.showError(this.deleteGroupModal, "Could not delete group."));
                     }
                 })
                 .catch(error => {
                     console.error("Error deleting group:", error);
+                    this.showError(this.deleteGroupModal, "Network error while deleting group.");
                 });
         }
     }
