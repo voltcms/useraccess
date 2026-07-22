@@ -113,10 +113,18 @@ class UserProvider implements UserProviderInterface
 
     public function delete(string $id)
     {
-        // todo delete user membership of groups
         $id = trim(strtolower($id));
         if ($this->exists('id', $id)) {
             self::$db->delete($id);
+            // Remove the deleted user from every group they belonged to so no
+            // stale membership references are left behind.
+            $groupProvider = GroupProvider::getInstance();
+            foreach ($groupProvider->readAll() as $group) {
+                if ($group->hasMember($id)) {
+                    $group->removeMember($id);
+                    $groupProvider->update($group);
+                }
+            }
         } else {
             throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
         }
