@@ -324,7 +324,7 @@ Data integrity / scale:
   mutation. The user-delete path now runs delete + group-strip under one lock so it is
   atomic against other writers. NOTE: this serializes flat-file writers safely but does not
   scale; a high-concurrency deployment should still move to a transactional store.
-- [ ] **Backup / restore story** for the flat-file DB.
+- [ ] **Backup / restore story** for the flat-file DB. _(Deferred to a follow-up PR.)_
 
 Error handling / robustness:
 
@@ -352,8 +352,10 @@ Operational:
   method), client IP, action, target id/name, and outcome. Enable with
   `SCIM::setAuditLogDirectory($dir)` (off by default; the demo logs to `../data/audit`).
   The log dir gets the same deny-all `.htaccess` and should live outside the web root.
-- [ ] **Real README / deployment + hardening docs** — the current README is only an RFC
-  excerpt.
+- [x] **Real README / deployment + hardening docs** — `README.md` documents features,
+  install, quick start, the SCIM API + all three auth modes, security/hardening,
+  configuration, the demo, testing/CI, a production deployment checklist, and a
+  self-contained "For AI agents" integration recipe.
 
 SCIM completeness (interop):
 
