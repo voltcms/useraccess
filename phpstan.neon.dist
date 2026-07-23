@@ -7,3 +7,7 @@ parameters:
     level: 2
     paths:
         - src
+    excludePaths:
+        # Legacy/experimental router kept for reference; its body is commented
+        # out (see CLAUDE.md), so it is not analysed.
+        - src/RestApp.php

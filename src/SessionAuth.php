@@ -42,7 +42,7 @@ class SessionAuth
             throw new Exception("Group Provider cannot be empty");
         }
         if (self::$instance === null) {
-            self::$instance = new static();
+            self::$instance = new self();
             self::$instance->now = time();
             self::$instance->userProvider = $userProvider;
             self::$instance->groupProvider = $groupProvider;
