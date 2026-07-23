@@ -70,8 +70,11 @@ sends everything to `index.php`; note it expects `../../vendor/autoload.php`):
 php -S localhost:8000        # then point the demo UI's fetch base at /api/scim/...
 ```
 
-**Nothing is committed to `master` by CI here — there is no CI workflow in the repo.**
-Always run `composer test` yourself before considering a change done.
+**CI** runs on GitHub Actions (`.github/workflows/ci.yml`): a `test` job installs deps and
+runs `composer test` on PHP 8.4 (PHPUnit 13 requires 8.4.1+), and a `lint` job `php -l`s
+`src/` + `demo/` across PHP 8.2/8.3/8.4 to guard the package's advertised floor. Static
+analysis (PHPStan/Psalm) and a coding-standard check are not wired up yet. Always run
+`composer test` yourself before considering a change done.
 
 ## Core architecture & conventions
 
@@ -199,8 +202,9 @@ Match the existing code — it is deliberately plain, framework-light PHP:
 - Data directories are gitignored: `/data/`, `/demo/data/`, `/tests/data/`, plus
   `/vendor/`, `/node_modules/`, `/.phpunit.cache`. Never commit generated data or deps.
 - Keep changes minimal and consistent with the plain-PHP style above.
-- Run `composer test` before finishing. There is no lint/CI gate in-repo, so tests are
-  the safety net.
+- Run `composer test` before finishing. CI (`.github/workflows/ci.yml`) runs the suite on
+  PHP 8.4 plus a `php -l` lint matrix on 8.2/8.3/8.4, but tests are still your local safety
+  net — run them.
 - Do not create pull requests unless explicitly asked.
 
 ## Gotchas / things to know
@@ -318,8 +322,9 @@ Error handling / robustness:
 
 Operational:
 
-- [ ] **CI** — no workflow in-repo; add one that runs `composer test` (plus PHPStan/Psalm
-  and a coding-standard check) on every push/PR.
+- [x] **CI** — `.github/workflows/ci.yml` runs `composer test` on PHP 8.4 and a `php -l`
+  lint matrix on 8.2/8.3/8.4 on every push/PR. Still to add: PHPStan/Psalm and a
+  coding-standard (PHP-CS-Fixer / PHPCS) check.
 - [ ] **Audit logging** of admin actions (who created/modified/deleted whom).
 - [ ] **Real README / deployment + hardening docs** — the current README is only an RFC
   excerpt.
