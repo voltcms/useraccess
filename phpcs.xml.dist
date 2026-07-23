@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<ruleset name="VoltCMS-UserAccess">
+    <description>
+        Lightweight coding-standard checks for the UserAccess library. Kept
+        intentionally narrow so it enforces the conventions the codebase already
+        follows (no tabs, unix line endings, no trailing whitespace, files end in
+        a newline, long-form open tags) without imposing a wholesale reformat.
+    </description>
+
+    <file>src</file>
+
+    <arg name="colors"/>
+    <arg value="sp"/>
+    <!-- Only errors should fail the build; warnings are advisory. -->
+    <config name="ignore_warnings_on_exit" value="1"/>
+
+    <rule ref="Generic.PHP.DisallowShortOpenTag"/>
+    <rule ref="Generic.Files.ByteOrderMark"/>
+    <rule ref="Generic.Files.LineEndings">
+        <properties>
+            <property name="eolChar" value="\n"/>
+        </properties>
+    </rule>
+    <rule ref="Generic.WhiteSpace.DisallowTabIndent"/>
+    <rule ref="PSR2.Files.EndFileNewline"/>
+    <rule ref="Squiz.WhiteSpace.SuperfluousWhitespace">
+        <properties>
+            <property name="ignoreBlankLines" value="true"/>
+        </properties>
+    </rule>
+</ruleset>

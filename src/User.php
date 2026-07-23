@@ -56,7 +56,7 @@ class User
     {
         return $this->userName;
     }
- 
+
     public function setUserName(string $userName)
     {
         if (!preg_match(Sanitizer::REGEX_NAME, $userName)) {
@@ -69,7 +69,7 @@ class User
     {
         return $this->displayName;
     }
- 
+
     public function setDisplayName(string $displayName)
     {
         $this->displayName = trim($displayName);
@@ -79,7 +79,7 @@ class User
     {
         return $this->familyName;
     }
- 
+
     public function setFamilyName(string $familyName)
     {
         $this->familyName = trim($familyName);
@@ -89,7 +89,7 @@ class User
     {
         return $this->givenName;
     }
- 
+
     public function setGivenName(string $givenName)
     {
         $this->givenName = trim($givenName);
@@ -99,7 +99,7 @@ class User
     {
         return $this->email;
     }
- 
+
     public function setEmail(string $email)
     {
         $email = trim(strtolower($email));
@@ -108,7 +108,7 @@ class User
         }
         $this->email = $email;
     }
- 
+
     public function getEmails(): array
     {
         return [$this->getEmail()];
@@ -118,12 +118,12 @@ class User
     {
         return $this->active;
     }
- 
+
     public function isActive(): bool
     {
         return $this->active;
     }
- 
+
     public function setActive(bool $active)
     {
         $this->active = $active;
@@ -133,12 +133,12 @@ class User
     {
         $this->passwordHash = self::hashPassword(trim($password));
     }
- 
+
     public function setPasswordHash(string $passwordHash)
     {
         $this->passwordHash = trim($passwordHash);
     }
- 
+
     public static function hashPassword(string $password): string
     {
         self::validatePassword($password);
@@ -156,7 +156,7 @@ class User
             throw new Exception('EXCEPTION_INVALID_PASSWORD');
         }
     }
- 
+
     public function verifyPassword(string $password): bool
     {
         return \password_verify(trim($password), $this->passwordHash);

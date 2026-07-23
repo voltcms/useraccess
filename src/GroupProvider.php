@@ -5,7 +5,7 @@ namespace VoltCMS\UserAccess;
 use \Exception;
 use \VoltCMS\FileDB\FileDB;
 
-class GroupProvider implements GroupProviderInterface 
+class GroupProvider implements GroupProviderInterface
 {
 
     private static $instance = null;

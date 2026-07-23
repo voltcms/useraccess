@@ -342,9 +342,11 @@ Error handling / robustness:
 
 Operational:
 
-- [x] **CI** — `.github/workflows/ci.yml` runs `composer test` on PHP 8.4 and a `php -l`
-  lint matrix on 8.2/8.3/8.4 on every push/PR. Still to add: PHPStan/Psalm and a
-  coding-standard (PHP-CS-Fixer / PHPCS) check.
+- [x] **CI** — `.github/workflows/ci.yml` runs `composer test` on PHP 8.4, a `php -l`
+  lint matrix on 8.2/8.3/8.4, **PHPStan** (`composer phpstan`, `phpstan.neon.dist`,
+  level 2 over `src/`), and a **PHP_CodeSniffer** coding-standard check (`composer phpcs`,
+  `phpcs.xml.dist`) on every push/PR. The PHPStan level is deliberately conservative and
+  can be raised as type hints are added.
 - [x] **Audit logging** of admin actions — `AuditLog` appends one JSON-Lines entry per
   successful create/update/patch/delete of a user or group, capturing actor (+ auth
   method), client IP, action, target id/name, and outcome. Enable with

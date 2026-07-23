@@ -46,6 +46,12 @@ jobs:
       - name: Run tests
         run: composer test
 
+      - name: Static analysis (PHPStan)
+        run: composer phpstan
+
+      - name: Coding standard (PHP_CodeSniffer)
+        run: composer phpcs
+
   lint:
     name: Lint (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest

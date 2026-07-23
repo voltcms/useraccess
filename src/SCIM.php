@@ -246,7 +246,7 @@ class SCIM
         // $payload['userName'] = $attributes['userName'];
 
         // if(isset($attributes['externalId']))
-        //     $payload['externalId'] = $attributes['externalId'];    
+        //     $payload['externalId'] = $attributes['externalId'];
 
         // if(isset($attributes['name']))
         //     $payload['name'] = $attributes['name'];
@@ -296,14 +296,14 @@ class SCIM
         // $payload['groups'] = [];
         // foreach($groups as $group)
         // {
-        //     $groupAttributes = $this->db->getResourceAttributes($group);    
+        //     $groupAttributes = $this->db->getResourceAttributes($group);
         //     $grp = array("value" => $group, "displayName" => $groupAttributes['displayName']);
         //     $payload['groups'][] = $grp;
         // }
         // if(isset($attributes['entitlements']))
-        //     $payload['entitlements'] = $attributes['entitlements'];    
+        //     $payload['entitlements'] = $attributes['entitlements'];
         // if(isset($attributes['roles']))
-        //     $payload['roles'] = $attributes['roles'];    
+        //     $payload['roles'] = $attributes['roles'];
         // if(count($schemas) > 1)
         //     foreach($schemas as $schema)
         //     {

@@ -1,0 +1,9 @@
+parameters:
+    # A deliberately conservative baseline for this loosely-typed, framework-light
+    # library. It reliably catches real breakage — unknown classes/methods/
+    # functions, undefined variables, wrong argument counts, bad PHPDoc — without
+    # drowning the plain-PHP style in strict-typing noise. Raise the level over
+    # time as type hints are added.
+    level: 2
+    paths:
+        - src
