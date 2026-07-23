@@ -73,12 +73,14 @@ class GroupProvider implements GroupProviderInterface
 
     public function create(Group $group): Group
     {
-        if ($this->exists('displayName', $group->getDisplayName())) {
-            throw new Exception('EXCEPTION_GROUP_ALREADY_EXIST');
-        } else {
-            $id = self::$db->create($group->getAttributes());
-            return $this->documentToEntry(self::$db->read($id)[0]);
-        }
+        return Lock::exclusive(function () use ($group) {
+            if ($this->exists('displayName', $group->getDisplayName())) {
+                throw new Exception('EXCEPTION_GROUP_ALREADY_EXIST');
+            } else {
+                $id = self::$db->create($group->getAttributes());
+                return $this->documentToEntry(self::$db->read($id)[0]);
+            }
+        });
     }
 
     public function readAll(): array
@@ -99,28 +101,34 @@ class GroupProvider implements GroupProviderInterface
 
     public function update(Group $group): Group
     {
-        if ($this->exists('id', $group->getId())) {
-            self::$db->update($group->getId(), $group->getAttributes());
-            return $group;
-        } else {
-            throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
-        }
+        return Lock::exclusive(function () use ($group) {
+            if ($this->exists('id', $group->getId())) {
+                self::$db->update($group->getId(), $group->getAttributes());
+                return $group;
+            } else {
+                throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
+            }
+        });
     }
 
     public function delete(string $id)
     {
         $id = trim(strtolower($id));
-        if ($this->exists('id', $id)) {
-            self::$db->delete($id);
-        } else {
-            throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
-        }
+        Lock::exclusive(function () use ($id) {
+            if ($this->exists('id', $id)) {
+                self::$db->delete($id);
+            } else {
+                throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
+            }
+        });
     }
 
     public function deleteAll()
     {
-        self::$db->deleteAll();
-        self::createAdminGroup();
+        Lock::exclusive(function () {
+            self::$db->deleteAll();
+            self::createAdminGroup();
+        });
     }
 
     private function createAdminGroup() {

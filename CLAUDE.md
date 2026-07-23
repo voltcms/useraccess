@@ -28,7 +28,9 @@ src/                       # The library (PSR-4: VoltCMS\UserAccess\)
   SessionAuth.php          # Singleton PHP-session login/logout, CSRF, group enforcement
   HeaderAuth.php           # Stateless HTTP Basic auth check
   Sanitizer.php            # String/array sanitization + validation regexes
-  Utils.php                # Page-protection / content-visibility helpers for host apps
+  Lock.php                 # Process-wide reentrant advisory write mutex (flock) for FileDB
+  LoginThrottle.php        # Shared-storage brute-force lockout (identifier + IP keyed)
+  Utils.php                # Page-protection / content-visibility helpers + isHttps/protectDirectory
   RestApp.php              # Legacy/experimental router — ENTIRELY COMMENTED OUT, not used
 tests/                     # PHPUnit tests
   UserTest.php             # User entity unit test
@@ -92,6 +94,10 @@ Always run `composer test` yourself before considering a change done.
 - IDs are UUIDs. SCIM routes match them with a strict UUID regex.
 - `find($attribute, $value)` delegates to FileDB's attribute query; `read('id', ...)`
   is a direct key lookup. IDs are always lowercased/trimmed before lookup.
+- **Writes are serialized.** Every mutating provider method (`create/update/delete/
+  deleteAll`) runs inside `Lock::exclusive()`, a reentrant `flock` mutex, since FileDB has
+  no locking. Reads are not locked. Keep new mutations inside the lock, and rely on its
+  reentrancy for cross-provider sequences (e.g. user-delete updating groups).
 
 ### SCIM layer (`SCIM.php`)
 - `SCIM` is the primary integration point. Construct it with a user provider and a group
@@ -132,6 +138,10 @@ Always run `composer test` yourself before considering a change done.
 - **`HeaderAuth::checkBasicAuthentication()`** is stateless — decodes an `Authorization:
   Basic` header and verifies the password. Requires the web server to pass the
   Authorization header through (see `demo/api/.htaccess`).
+- **Brute-force lockout** is enforced by `LoginThrottle`, shared across requests and keyed
+  by identifier + `REMOTE_ADDR` (not the session), so it applies to both the session and
+  HTTP Basic paths and cannot be reset by dropping the cookie. Both auth paths call
+  `registerFailure`/`reset`; `SessionAuth::login` returns HTTP 429 when locked.
 - **Admin** = membership in the `Administrators` group. `GroupProvider` auto-creates this
   group on first `getInstance()` and re-creates it after `deleteAll()`; `SCIM::deleteGroup`
   refuses to delete it (403). `User::isAdmin()` == `isMemberOf('Administrators')`.
@@ -246,14 +256,19 @@ Quick wins (done):
 - [x] **Proxy-aware HTTPS detection** — `Utils::isHttps()` honors `X-Forwarded-Proto` /
   `X-Forwarded-SSL`; used for the secure cookie flag and all location URLs.
 - [x] **Secure by default** — `SCIM` enforces admin authentication unless a caller
-  explicitly opts out; the demo opts out with a DEMO-ONLY warning.
+  explicitly opts out. The demo now runs **fully authenticated**: `demo/api/index.php`
+  exposes `/auth/session`, `/auth/login`, `/auth/logout` and constructs `SCIM` with
+  enforcement on; the UI gates behind a login form and drives the API with the session
+  cookie.
 
 Security / auth:
 
-- [ ] **Brute-force protection that can't be bypassed** — `SessionAuth` keeps the attempt
-  counter in `$_SESSION`, so an attacker who drops the cookie gets a fresh counter every
-  request; `HeaderAuth` (HTTP Basic) has no throttling at all. Move lockout to shared
-  storage keyed by username/IP.
+- [x] **Brute-force protection that can't be bypassed** — `LoginThrottle` persists failure
+  counts to shared filesystem storage keyed by identifier + `REMOTE_ADDR`, so dropping the
+  session cookie no longer resets the counter; wired into both `SessionAuth::login` (429
+  when locked) and `HeaderAuth::checkBasicAuthentication`. Lockout = `maxLoginAttempts`
+  failures within a 900s window, cleared on success. The `$_SESSION` counter is kept for
+  backward-compatible login info but is no longer the security boundary.
 - [ ] **Bearer-token / OAuth auth** — real IdPs (Okta, Entra/Azure AD) provision over SCIM
   with `Authorization: Bearer`. Only HTTP Basic + session are supported today.
 - [ ] **Enforce HTTPS / add HSTS** — refuse or redirect plaintext requests; Basic auth and
@@ -263,18 +278,22 @@ Security / auth:
 
 Data integrity / scale:
 
-- [ ] **Concurrency control** — flat-file writes have no locking; concurrent updates can
-  race and corrupt data. The user-delete path (delete user, then loop-update every group)
-  is non-atomic and O(groups). Add locking or move to a transactional store.
+- [x] **Concurrency control** — `Lock::exclusive()` is a process-wide, reentrant advisory
+  write mutex (`flock(LOCK_EX)` on a per-install lock file) wrapping every provider
+  mutation. The user-delete path now runs delete + group-strip under one lock so it is
+  atomic against other writers. NOTE: this serializes flat-file writers safely but does not
+  scale; a high-concurrency deployment should still move to a transactional store.
 - [ ] **Backup / restore story** for the flat-file DB.
 
 Error handling / robustness:
 
-- [ ] **Global exception handler** — an uncaught error (FileDB IO failure, disk full,
-  malformed `emails[0].value`) becomes a PHP fatal that can leak a stack trace; catch and
-  emit a clean SCIM error, and ship with `display_errors=off`.
-- [ ] **Stop leaking internal exception codes** — `createUser`'s default branch returns
-  raw `EXCEPTION_*` messages to clients.
+- [x] **Global exception handler** — `SCIM::runRouter()` installs an exception + shutdown
+  handler that logs the fault and emits a clean SCIM 500 (only if headers aren't sent), and
+  sets `display_errors=0` / `log_errors=1`. Unit tests call handlers directly so they are
+  unaffected.
+- [x] **Stop leaking internal exception codes** — `createUser` now wraps `fromSCIM` +
+  `create`, maps known validation/domain codes to friendly 4xx messages, and returns a
+  generic 500 (logging the real code) for anything else instead of echoing `EXCEPTION_*`.
 - [ ] **`active` footgun** — `parseUserPayload` coerces absent/empty/`0` `active` to
   `false`, so a `PUT` that omits `active` silently deactivates the user.
 

@@ -15,6 +15,94 @@ document.addEventListener("DOMContentLoaded", function () {
         updateUserModal = document.getElementById("updateUserModal");
         updateUserForm = document.getElementById("updateUserForm");
 
+        initialized = false;
+        csrfToken = "";
+
+        // Show the login view and hide the app. Binds the login form once.
+        showLogin = function () {
+            document.getElementById("appView").classList.add("d-none");
+            const loginView = document.getElementById("loginView");
+            loginView.classList.remove("d-none");
+            const form = document.getElementById("loginForm");
+            if (form && !form.dataset.bound) {
+                form.dataset.bound = "1";
+                form.addEventListener("submit", (event) => {
+                    event.preventDefault();
+                    this.login();
+                });
+            }
+        }
+
+        // Show the app for an authenticated admin session. Runs init() once,
+        // then just refreshes data on subsequent calls.
+        showApp = function (session) {
+            document.getElementById("loginView").classList.add("d-none");
+            document.getElementById("appView").classList.remove("d-none");
+            this.csrfToken = (session && session.csrfToken) ? session.csrfToken : this.csrfToken;
+            const label = document.getElementById("currentUser");
+            if (label && session) {
+                label.textContent = session.displayName
+                    ? session.displayName + " (" + session.userName + ")"
+                    : (session.userName || "");
+            }
+            const logout = document.getElementById("logoutButton");
+            if (logout && !logout.dataset.bound) {
+                logout.dataset.bound = "1";
+                logout.addEventListener("click", () => this.logout());
+            }
+            if (!this.initialized) {
+                this.initialized = true;
+                this.init();
+            } else {
+                this.loadUsers();
+                this.loadGroups();
+            }
+        }
+
+        login = async function () {
+            const form = document.getElementById("loginForm");
+            const errorBox = document.getElementById("loginError");
+            errorBox.classList.add("d-none");
+            const formData = new FormData(form);
+            const body = JSON.stringify({
+                userName: formData.get("userName"),
+                password: formData.get("password"),
+                csrfToken: this.csrfToken
+            });
+            try {
+                const response = await fetch("../api/auth/login", {
+                    method: "POST",
+                    headers: { "Accept": "application/json", "Content-Type": "application/json" },
+                    body: body
+                });
+                const data = await response.json();
+                if (response.ok && data.loggedIn) {
+                    form.reset();
+                    // The session id was regenerated on login; refresh the CSRF
+                    // token and user info from the new session.
+                    const session = await fetch("../api/auth/session", { headers: { "Accept": "application/json" } })
+                        .then(r => r.json());
+                    this.showApp(session);
+                } else {
+                    errorBox.textContent = (data && data.detail) ? data.detail : "Sign in failed.";
+                    errorBox.classList.remove("d-none");
+                }
+            } catch (error) {
+                console.error("Error during sign in:", error);
+                errorBox.textContent = "Network error during sign in.";
+                errorBox.classList.remove("d-none");
+            }
+        }
+
+        logout = async function () {
+            try {
+                await fetch("../api/auth/logout", { method: "POST", headers: { "Accept": "application/json" } });
+            } catch (error) {
+                console.error("Error during sign out:", error);
+            }
+            this.showLogin();
+        }
+
         init() {
             this.loadUsers();
             this.loadGroups();
@@ -92,7 +180,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
         loadUsers = async function () {
             fetch("../api/scim/users")
-                .then(response => response.json())
+                .then(response => {
+                    if (response.status === 401) {
+                        this.showLogin();
+                        return null;
+                    }
+                    return response.json();
+                })
                 .then(data => {
                     if (!data || !data.Resources || data.Resources.length == 0) {
                         return;
@@ -199,7 +293,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
         loadGroups = async function () {
             fetch("../api/scim/groups")
-                .then(response => response.json())
+                .then(response => {
+                    if (response.status === 401) {
+                        this.showLogin();
+                        return null;
+                    }
+                    return response.json();
+                })
                 .then(data => {
                     if (!data || !data.Resources || data.Resources.length == 0) {
                         return;
@@ -571,5 +671,21 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     window.UserAccess = new UserAccess();
-    window.UserAccess.init();
+    // Gate the whole UI behind an authenticated admin session. The SCIM API is
+    // now secure by default, so check session state first and show either the
+    // login form or the app.
+    fetch("../api/auth/session", { headers: { "Accept": "application/json" } })
+        .then(response => response.json())
+        .then(session => {
+            window.UserAccess.csrfToken = session.csrfToken || "";
+            if (session.loggedIn) {
+                window.UserAccess.showApp(session);
+            } else {
+                window.UserAccess.showLogin();
+            }
+        })
+        .catch(error => {
+            console.error("Error checking session:", error);
+            window.UserAccess.showLogin();
+        });
 });

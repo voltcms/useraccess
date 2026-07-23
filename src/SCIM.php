@@ -31,6 +31,8 @@ class SCIM
 
     public function runRouter()
     {
+        $this->installErrorHandling();
+
         $this->router->set404(function () {
             //header('HTTP/1.1 404 Not Found');
             // ... do something special here
@@ -115,21 +117,29 @@ class SCIM
             }
             $attributes[$key] = $value;
         }
-        $user->fromSCIM($attributes);
         try {
+            // fromSCIM runs the entity setters, which validate (email format,
+            // username charset, non-empty password) and throw EXCEPTION_* codes;
+            // keep it inside the try so those become clean 4xx responses instead
+            // of an uncaught fatal.
+            $user->fromSCIM($attributes);
             $user = $this->userProvider->create($user);
         } catch (Exception $e) {
-            error_log('Message: ' . $e->getMessage());
+            error_log('createUser failed: ' . $e->getMessage());
             switch ($e->getMessage()) {
                 case 'EXCEPTION_USER_ALREADY_EXIST':
                     exit($this->throwError(409, "User with username " . $user->getUserName() . " already exists."));
-                    break;
                 case 'EXCEPTION_DUPLICATE_EMAIL':
                     exit($this->throwError(409, "User with email " . $user->getEmail() . " already exists."));
-                    break;
+                case 'EXCEPTION_INVALID_EMAIL':
+                    exit($this->throwError(400, "The 'emails' value is not a valid email address."));
+                case 'EXCEPTION_INVALID_USER_NAME':
+                    exit($this->throwError(400, "The 'userName' value contains invalid characters."));
+                case 'EXCEPTION_INVALID_PASSWORD':
+                    exit($this->throwError(400, "The 'password' value is invalid."));
                 default:
-                    exit($this->throwError(409, $e->getMessage()));
-                    break;
+                    // Never surface raw internal exception codes to the client.
+                    exit($this->throwError(500, "The user could not be created due to an internal error."));
             }
         }
         $payload = $user->toSCIM();
@@ -1020,6 +1030,46 @@ class SCIM
                 'detail' => $description,
                 'status' => $statusCode
             )
+        ));
+    }
+
+    // Installs a safety net so an uncaught error never leaks a PHP stack trace
+    // to the client. Disables display_errors (errors go to the log instead),
+    // and converts any uncaught exception or fatal into a clean SCIM 500 error
+    // body. Wired from runRouter() so it only affects live request handling,
+    // not unit tests that call handler methods directly.
+    private function installErrorHandling(): void
+    {
+        ini_set('display_errors', '0');
+        ini_set('log_errors', '1');
+
+        set_exception_handler(function (\Throwable $e) {
+            error_log('SCIM uncaught exception: ' . $e);
+            $this->emitInternalError();
+        });
+
+        register_shutdown_function(function () {
+            $error = error_get_last();
+            $fatal = array(E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR);
+            if ($error !== null && in_array($error['type'], $fatal, true)) {
+                error_log('SCIM fatal error: ' . $error['message'] . ' in ' . $error['file'] . ':' . $error['line']);
+                $this->emitInternalError();
+            }
+        });
+    }
+
+    // Emits a generic SCIM 500 error, but only if nothing has been sent yet,
+    // so a fault mid-response cannot corrupt an already-started body.
+    private function emitInternalError(): void
+    {
+        if (headers_sent()) {
+            return;
+        }
+        header("Content-Type: application/json", true, 500);
+        echo json_encode(array(
+            'schemas' => array("urn:ietf:params:scim:api:messages:2.0:Error"),
+            'detail' => 'An internal server error occurred.',
+            'status' => 500
         ));
     }
 }
