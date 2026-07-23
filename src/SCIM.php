@@ -17,7 +17,10 @@ class SCIM
     private $enforceAuthentication;
     private $loggedInUser;
 
-    public function __construct(UserProviderInterface $userProvider, GroupProviderInterface $groupProvider, bool $enforceAuthentication = false)
+    // $enforceAuthentication defaults to TRUE (secure by default): unless a
+    // caller explicitly opts out, the router requires a logged-in admin
+    // session or valid HTTP Basic admin credentials for every request.
+    public function __construct(UserProviderInterface $userProvider, GroupProviderInterface $groupProvider, bool $enforceAuthentication = true)
     {
         $this->userProvider = $userProvider;
         $this->groupProvider = $groupProvider;

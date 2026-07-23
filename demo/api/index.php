@@ -25,5 +25,11 @@ if (!$userProvider->exists('userName', 'Administrator')){
     $groupProvider->update($group);
 }
 
+// WARNING: DEMO ONLY. The third argument disables authentication so the
+// static demo UI (which has no login flow) can call the SCIM API directly.
+// This leaves the entire user/group API open to anonymous callers. NEVER do
+// this in production: construct `new SCIM($userProvider, $groupProvider)`
+// (authentication enforced by default) and drive it with an admin session
+// or HTTP Basic admin credentials.
 $app = new SCIM($userProvider, $groupProvider, false);
 $app->runRouter();

@@ -114,11 +114,12 @@ Always run `composer test` yourself before considering a change done.
   arg of `header(..., true, $code)`.
 - Payload validation lives in `parseUserPayload` / `parseGroupPayload` (schema presence,
   required `userName`/`displayName`, type-checking of optional SCIM fields, uniqueness).
-- `enforceAuthentication` (default **false**) optionally gates the whole router: it
-  requires a logged-in session user OR HTTP Basic credentials, and that the user
-  `isAdmin()`. It is the **third constructor argument** —
-  `new SCIM($userProvider, $groupProvider, true)` — defaulting to `false`, so the demo's
-  `new SCIM($userProvider, $groupProvider, false)` keeps the router open.
+- `enforceAuthentication` (**default true — secure by default**) gates the whole router:
+  it requires a logged-in session user OR HTTP Basic credentials, and that the user
+  `isAdmin()`. It is the **third constructor argument**, so `new SCIM($userProvider,
+  $groupProvider)` is authenticated; a caller must explicitly opt out with
+  `new SCIM($userProvider, $groupProvider, false)`. The demo opts out (its static UI has
+  no login flow) with a loud DEMO-ONLY warning — never do that in production.
 
 ### Authentication
 - **`SessionAuth`** (singleton) manages PHP `$_SESSION` login state. Cookies are set
@@ -203,8 +204,90 @@ Match the existing code — it is deliberately plain, framework-light PHP:
 - `Utils::ACCESS_STATUS_LOGGED_IN_NOT_MEMBER_OF_GROUP` now has a **distinct** value
   (`logged_in_not_member_of_group`) from `..._MEMBER_OF_GROUP`; earlier revisions shared
   one string, which broke the "not member of group" access state. `UtilsTest` guards this.
-- Session cookies are set `httponly`, `samesite=Strict`, and `secure` under HTTPS;
-  `SessionAuth::login()` calls `session_regenerate_id(true)` on success (session-fixation
-  defense). `HeaderAuth::checkBasicAuthentication()` splits credentials on the first `:`
-  only (passwords may contain colons) and performs a constant-time dummy verify for
-  unknown users to avoid username enumeration via timing.
+- Session cookies are set `httponly`, `samesite=Strict`, and `secure` over HTTPS;
+  HTTPS is detected via `Utils::isHttps()`, which honors `X-Forwarded-Proto` /
+  `X-Forwarded-SSL` so the flag and location URLs stay correct behind a TLS-terminating
+  proxy. `SessionAuth::login()` calls `session_regenerate_id(true)` on success
+  (session-fixation defense). `HeaderAuth::checkBasicAuthentication()` splits credentials
+  on the first `:` only (passwords may contain colons) and performs a constant-time dummy
+  verify for unknown users to avoid username enumeration via timing.
+
+## Production readiness
+
+This is a small, dependency-light library; several things are still needed before a
+deployment can be considered production-grade. Tracked as a living checklist — check items
+off (and add a one-line note) as they land.
+
+### Deploying safely (data protection)
+
+The flat-file store writes one JSON document per entity, and those documents contain the
+**bcrypt `passwordHash` and PII**. `toSCIM()` strips `passwordHash` from API responses, but
+the files on disk still hold it — so if the data directory is ever reachable over HTTP, the
+hashes are downloadable.
+
+- **The real fix: keep the data directory OUTSIDE the web root.** Point the provider
+  `directory` at a path the web server does not serve (e.g. `/var/lib/voltcms/useraccess`).
+- **Defense in depth (automatic):** `UserProvider` / `GroupProvider` call
+  `Utils::protectDirectory()` on first `getInstance()`, dropping a deny-all `.htaccess`
+  (`Require all denied`) and an empty `index.html` into the data dir. This protects Apache
+  setups even if the dir lands in the web root; it is best-effort and silently skips when it
+  cannot write.
+- **nginx does not read `.htaccess`** — add the equivalent to your server config:
+  ```nginx
+  location ~ /data/ { deny all; return 404; }
+  ```
+
+### Checklist
+
+Quick wins (done):
+
+- [x] **Data-directory protection** — `Utils::protectDirectory()` writes deny-all
+  `.htaccess` + `index.html`; out-of-web-root storage + nginx snippet documented above.
+- [x] **Proxy-aware HTTPS detection** — `Utils::isHttps()` honors `X-Forwarded-Proto` /
+  `X-Forwarded-SSL`; used for the secure cookie flag and all location URLs.
+- [x] **Secure by default** — `SCIM` enforces admin authentication unless a caller
+  explicitly opts out; the demo opts out with a DEMO-ONLY warning.
+
+Security / auth:
+
+- [ ] **Brute-force protection that can't be bypassed** — `SessionAuth` keeps the attempt
+  counter in `$_SESSION`, so an attacker who drops the cookie gets a fresh counter every
+  request; `HeaderAuth` (HTTP Basic) has no throttling at all. Move lockout to shared
+  storage keyed by username/IP.
+- [ ] **Bearer-token / OAuth auth** — real IdPs (Okta, Entra/Azure AD) provision over SCIM
+  with `Authorization: Bearer`. Only HTTP Basic + session are supported today.
+- [ ] **Enforce HTTPS / add HSTS** — refuse or redirect plaintext requests; Basic auth and
+  session cookies must never travel over HTTP.
+- [ ] **Password policy** — `User::setPassword` accepts any non-empty string; add
+  minimum length / complexity requirements.
+
+Data integrity / scale:
+
+- [ ] **Concurrency control** — flat-file writes have no locking; concurrent updates can
+  race and corrupt data. The user-delete path (delete user, then loop-update every group)
+  is non-atomic and O(groups). Add locking or move to a transactional store.
+- [ ] **Backup / restore story** for the flat-file DB.
+
+Error handling / robustness:
+
+- [ ] **Global exception handler** — an uncaught error (FileDB IO failure, disk full,
+  malformed `emails[0].value`) becomes a PHP fatal that can leak a stack trace; catch and
+  emit a clean SCIM error, and ship with `display_errors=off`.
+- [ ] **Stop leaking internal exception codes** — `createUser`'s default branch returns
+  raw `EXCEPTION_*` messages to clients.
+- [ ] **`active` footgun** — `parseUserPayload` coerces absent/empty/`0` `active` to
+  `false`, so a `PUT` that omits `active` silently deactivates the user.
+
+Operational:
+
+- [ ] **CI** — no workflow in-repo; add one that runs `composer test` (plus PHPStan/Psalm
+  and a coding-standard check) on every push/PR.
+- [ ] **Audit logging** of admin actions (who created/modified/deleted whom).
+- [ ] **Real README / deployment + hardening docs** — the current README is only an RFC
+  excerpt.
+
+SCIM completeness (interop):
+
+- [ ] **Discovery + missing endpoints** — `/Me`, `/Schemas`, `/ResourceTypes`; Bulk; sort;
+  richer filtering (only a single `attribute eq "value"` is supported).
+- [ ] **`application/scim+json`** request/response content types (RFC 7644).

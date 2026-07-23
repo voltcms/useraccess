@@ -21,6 +21,7 @@ class GroupProvider implements GroupProviderInterface
             }
             self::$instance = new static();
             self::$db = new FileDB($directory);
+            Utils::protectDirectory($directory);
             self::$instance->createAdminGroup();
         }
         return self::$instance;

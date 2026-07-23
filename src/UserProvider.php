@@ -21,6 +21,7 @@ class UserProvider implements UserProviderInterface
             }
             self::$instance = new static();
             self::$db = new FileDB($directory);
+            Utils::protectDirectory($directory);
         }
         return self::$instance;
     }

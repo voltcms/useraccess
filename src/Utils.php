@@ -118,4 +118,71 @@ class Utils
         header($key . ': ' . $value);
     }
 
+    // Determines whether the current request is being served over HTTPS.
+    // Honors the standard reverse-proxy / load-balancer forwarding headers
+    // (`X-Forwarded-Proto`, `X-Forwarded-SSL`) in addition to the direct
+    // `HTTPS` server variable, so the secure cookie flag and generated
+    // location URLs stay correct behind a TLS-terminating proxy.
+    //
+    // NOTE: the forwarding headers are only trustworthy when the app sits
+    // behind a proxy you control that sets/strips them. Erring towards
+    // "https" here is the safe direction: it can only add the `Secure`
+    // cookie flag and produce https:// URLs, never weaken them.
+    public static function isHttps(): bool
+    {
+        if (!empty($_SERVER['HTTPS']) && strtolower($_SERVER['HTTPS']) !== 'off') {
+            return true;
+        }
+        if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https') {
+            return true;
+        }
+        if (isset($_SERVER['HTTP_X_FORWARDED_SSL']) && strtolower($_SERVER['HTTP_X_FORWARDED_SSL']) === 'on') {
+            return true;
+        }
+        if (isset($_SERVER['SERVER_PORT']) && (int) $_SERVER['SERVER_PORT'] === 443) {
+            return true;
+        }
+        return false;
+    }
+
+    // Best-effort defense-in-depth for flat-file data directories: drops a
+    // deny-all `.htaccess` and an empty `index.html` into $directory so that,
+    // if the directory ever ends up inside an Apache document root, the raw
+    // JSON documents (which contain password hashes and PII) cannot be
+    // downloaded and the directory cannot be listed.
+    //
+    // This is a safety net, NOT a substitute for storing the data directory
+    // OUTSIDE the web root (the real fix) and does nothing on nginx — see the
+    // deployment notes in CLAUDE.md for the nginx equivalent. Failures are
+    // swallowed: protection is opportunistic and must never break persistence.
+    public static function protectDirectory(string $directory): void
+    {
+        if ($directory === '') {
+            return;
+        }
+        if (!is_dir($directory)) {
+            @mkdir($directory, 0755, true);
+        }
+        if (!is_dir($directory) || !is_writable($directory)) {
+            return;
+        }
+        $htaccess = rtrim($directory, '/') . '/.htaccess';
+        if (!file_exists($htaccess)) {
+            $rules = "# Deny all web access to this data directory (defense in depth).\n"
+                . "# The real protection is keeping this directory outside the web root.\n"
+                . "<IfModule mod_authz_core.c>\n"
+                . "    Require all denied\n"
+                . "</IfModule>\n"
+                . "<IfModule !mod_authz_core.c>\n"
+                . "    Order allow,deny\n"
+                . "    Deny from all\n"
+                . "</IfModule>\n";
+            @file_put_contents($htaccess, $rules);
+        }
+        $index = rtrim($directory, '/') . '/index.html';
+        if (!file_exists($index)) {
+            @file_put_contents($index, '');
+        }
+    }
+
 }

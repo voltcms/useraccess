@@ -69,7 +69,7 @@ class SessionAuth
             $session_settings = [
                 'httponly' => true,
                 'samesite' => 'Strict',
-                'secure' => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on'),
+                'secure' => Utils::isHttps(),
             ];
             session_set_cookie_params($session_settings);
             session_start();
