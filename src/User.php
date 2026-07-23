@@ -9,6 +9,11 @@ class User
 
     CONST RESOURCE_TYPE = 'User';
     CONST SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:User';
+    // Password policy. 8 is the minimum length; 72 is the byte limit of bcrypt
+    // (PASSWORD_DEFAULT) — anything longer is silently truncated by the hash, so
+    // it is rejected rather than accepted with a misleading tail.
+    CONST PASSWORD_MIN_LENGTH = 8;
+    CONST PASSWORD_MAX_LENGTH = 72;
     private $_id = '';
     private $_created = '';
     private $_modified = '';
@@ -136,10 +141,20 @@ class User
  
     public static function hashPassword(string $password): string
     {
-        if (empty($password)) {
+        self::validatePassword($password);
+        return \password_hash($password, PASSWORD_DEFAULT);
+    }
+
+    // Enforces the password policy. Throws EXCEPTION_INVALID_PASSWORD when the
+    // (already trimmed) password is empty, shorter than PASSWORD_MIN_LENGTH, or
+    // longer than PASSWORD_MAX_LENGTH bytes. setPasswordHash bypasses this on
+    // purpose — it stores an already-hashed value, not a plaintext password.
+    public static function validatePassword(string $password): void
+    {
+        $length = strlen($password);
+        if ($length < self::PASSWORD_MIN_LENGTH || $length > self::PASSWORD_MAX_LENGTH) {
             throw new Exception('EXCEPTION_INVALID_PASSWORD');
         }
-        return \password_hash($password, PASSWORD_DEFAULT);
     }
  
     public function verifyPassword(string $password): bool

@@ -126,6 +126,13 @@ Always run `composer test` yourself before considering a change done.
   $groupProvider)` is authenticated; a caller must explicitly opt out with
   `new SCIM($userProvider, $groupProvider, false)`. The demo opts out (its static UI has
   no login flow) with a loud DEMO-ONLY warning — never do that in production.
+- **Transport security is opt-in**: `setHttpsPolicy(bool $requireHttps = true, int
+  $hstsMaxAge = 31536000, bool $includeSubDomains = true)` makes `runRouter()` refuse
+  plaintext HTTP (SCIM 403, before auth) and emit HSTS over HTTPS. Off by default. Runs
+  first in `runRouter()` so credentials are never processed over http.
+- **Error messages are client-safe**: PATCH/PUT/create map domain codes to friendly text
+  via `messageForException()`; handlers never echo raw `EXCEPTION_*` codes, and an uncaught
+  fault becomes a generic SCIM 500 (see the exception/shutdown handler).
 
 ### Authentication
 - **`SessionAuth`** (singleton) manages PHP `$_SESSION` login state. Cookies are set
@@ -208,6 +215,11 @@ Match the existing code — it is deliberately plain, framework-light PHP:
   `toSCIM()` output depends on request context; expect empties in pure unit contexts.
 - Passwords are hashed with `password_hash(PASSWORD_DEFAULT)`; `passwordHash` is stored in
   `getAttributes()` but stripped from `toSCIM()` output. Don't leak it in new responses.
+  `User::validatePassword` enforces an 8–72 character policy in `hashPassword`/`setPassword`
+  (72 = bcrypt's byte limit); `setPasswordHash` is exempt since it takes an existing hash.
+- **`active` on write**: an omitted `active` is left unset by `parseUserPayload`, so create
+  uses the entity default (`true`) and a `PUT` preserves the current value — only an
+  explicit boolean/int flips it. Don't reintroduce a blanket `active=false` default.
 - The demo seeds an `Administrator` user on first run with a hardcoded password — that is
   demo-only; never replicate hardcoded credentials in library code.
 - `RestApp.php` is dead code (fully commented). The live router is `SCIM.php`.
@@ -271,10 +283,15 @@ Security / auth:
   backward-compatible login info but is no longer the security boundary.
 - [ ] **Bearer-token / OAuth auth** — real IdPs (Okta, Entra/Azure AD) provision over SCIM
   with `Authorization: Bearer`. Only HTTP Basic + session are supported today.
-- [ ] **Enforce HTTPS / add HSTS** — refuse or redirect plaintext requests; Basic auth and
-  session cookies must never travel over HTTP.
-- [ ] **Password policy** — `User::setPassword` accepts any non-empty string; add
-  minimum length / complexity requirements.
+- [x] **Enforce HTTPS / add HSTS** — `SCIM::setHttpsPolicy()` (opt-in) refuses plaintext
+  HTTP with a SCIM 403 before auth runs, and sends `Strict-Transport-Security` over HTTPS.
+  Off by default (the local demo is http://localhost; TLS topology is deployment-specific)
+  — production calls `$app->setHttpsPolicy(true)`. HTTPS is detected via `Utils::isHttps()`
+  so it works behind a TLS-terminating proxy.
+- [x] **Password policy** — `User::validatePassword` enforces a length of
+  `PASSWORD_MIN_LENGTH`–`PASSWORD_MAX_LENGTH` (8–72; 72 is bcrypt's byte limit) in
+  `hashPassword`/`setPassword`. SCIM maps `EXCEPTION_INVALID_PASSWORD` to a friendly 400 on
+  create/replace/patch. `setPasswordHash` is exempt (it stores an existing hash).
 
 Data integrity / scale:
 
@@ -294,8 +311,10 @@ Error handling / robustness:
 - [x] **Stop leaking internal exception codes** — `createUser` now wraps `fromSCIM` +
   `create`, maps known validation/domain codes to friendly 4xx messages, and returns a
   generic 500 (logging the real code) for anything else instead of echoing `EXCEPTION_*`.
-- [ ] **`active` footgun** — `parseUserPayload` coerces absent/empty/`0` `active` to
-  `false`, so a `PUT` that omits `active` silently deactivates the user.
+- [x] **`active` footgun fixed** — `parseUserPayload` no longer injects `active=false` when
+  the field is omitted; it only normalizes an explicit value. On create the `User` entity
+  defaults to `active=true`; on a `PUT` that omits `active` the existing value is preserved
+  (`fromSCIM` assigns `active` only when present), so a replace never silently deactivates.
 
 Operational:
 

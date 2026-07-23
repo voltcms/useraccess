@@ -98,4 +98,7 @@ if ($path === '/auth/logout' && $method === 'POST') {
 // default). The demo UI authenticates via the /auth/login endpoint above and
 // then relies on the session cookie for these calls.
 $app = new SCIM($userProvider, $groupProvider);
+// In production, refuse plaintext HTTP and send HSTS (kept off here because the
+// local demo runs over http://localhost):
+//     $app->setHttpsPolicy(true);
 $app->runRouter();

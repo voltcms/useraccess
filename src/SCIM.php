@@ -16,6 +16,9 @@ class SCIM
     private $router;
     private $enforceAuthentication;
     private $loggedInUser;
+    private $requireHttps = false;
+    private $hstsMaxAge = 0;
+    private $hstsIncludeSubDomains = true;
 
     // $enforceAuthentication defaults to TRUE (secure by default): unless a
     // caller explicitly opts out, the router requires a logged-in admin
@@ -29,9 +32,22 @@ class SCIM
         $this->enforceAuthentication = $enforceAuthentication;
     }
 
+    // Enables HTTPS enforcement for the router. When on, plaintext HTTP requests
+    // are refused (so Basic-auth credentials and session cookies can never travel
+    // in the clear) and, over HTTPS, an HSTS header is sent. Off by default
+    // because TLS topology is deployment-specific (proxies, localhost, internal
+    // networks) and the local demo runs over http; production should call this.
+    public function setHttpsPolicy(bool $requireHttps = true, int $hstsMaxAge = 31536000, bool $hstsIncludeSubDomains = true): void
+    {
+        $this->requireHttps = $requireHttps;
+        $this->hstsMaxAge = max(0, $hstsMaxAge);
+        $this->hstsIncludeSubDomains = $hstsIncludeSubDomains;
+    }
+
     public function runRouter()
     {
         $this->installErrorHandling();
+        $this->enforceTransportSecurity();
 
         $this->router->set404(function () {
             //header('HTTP/1.1 404 Not Found');
@@ -136,7 +152,7 @@ class SCIM
                 case 'EXCEPTION_INVALID_USER_NAME':
                     exit($this->throwError(400, "The 'userName' value contains invalid characters."));
                 case 'EXCEPTION_INVALID_PASSWORD':
-                    exit($this->throwError(400, "The 'password' value is invalid."));
+                    exit($this->throwError(400, $this->messageForException('EXCEPTION_INVALID_PASSWORD')));
                 default:
                     // Never surface raw internal exception codes to the client.
                     exit($this->throwError(500, "The user could not be created due to an internal error."));
@@ -273,8 +289,13 @@ class SCIM
             }
             $attributes[$key] = $value;
         }
-        $user->fromSCIM($attributes);
-        $user = $this->userProvider->update($user);
+        try {
+            $user->fromSCIM($attributes);
+            $user = $this->userProvider->update($user);
+        } catch (Exception $e) {
+            error_log('putUser failed: ' . $e->getMessage());
+            exit($this->throwError($this->statusForException($e->getMessage()), $this->messageForException($e->getMessage())));
+        }
         $payload = $user->toSCIM();
         unset($payload['_modified']);
         header("Content-Type: application/json", true, 200);
@@ -307,7 +328,8 @@ class SCIM
             }
             $user = $this->userProvider->update($user);
         } catch (Exception $e) {
-            exit($this->throwError($this->statusForException($e->getMessage()), $e->getMessage()));
+            error_log('patchUser failed: ' . $e->getMessage());
+            exit($this->throwError($this->statusForException($e->getMessage()), $this->messageForException($e->getMessage())));
         }
         $payload = $user->toSCIM();
         unset($payload['_modified']);
@@ -408,16 +430,19 @@ class SCIM
                 exit($this->throwError(400, "The 'timezone' field was sent incorrectly in the request."));
             }
         }
-        if (array_key_exists('active', $payload) && $payload['active'] != "") {
+        if (array_key_exists('active', $payload) && $payload['active'] !== "") {
             if (!is_bool($payload['active']) && !is_integer($payload['active'])) {
                 exit($this->throwError(400, "The 'active' field was sent incorrectly in the request."));
             }
-        }
-        if (!array_key_exists('active', $payload) || $payload['active'] == "" || $payload['active'] == 0) {
-            $payload['active'] = false;
-        }
-        if (array_key_exists('active', $payload) && $payload['active'] == 1) {
-            $payload['active'] = true;
+            // Normalize an explicit value to a real bool.
+            $payload['active'] = ($payload['active'] === true || $payload['active'] === 1);
+        } else {
+            // 'active' was omitted (or empty). Do NOT force a value: on create
+            // the User entity defaults to active=true, and on a PUT replace the
+            // existing value is preserved (fromSCIM only assigns 'active' when
+            // present). This removes the footgun where a PUT that omitted
+            // 'active' silently deactivated the user.
+            unset($payload['active']);
         }
         if (array_key_exists('emails', $payload) && $payload['emails'] != "") {
             if (!is_array($payload['emails'])) {
@@ -624,7 +649,8 @@ class SCIM
             }
             $group = $this->groupProvider->update($group);
         } catch (Exception $e) {
-            exit($this->throwError($this->statusForException($e->getMessage()), $e->getMessage()));
+            error_log('patchGroup failed: ' . $e->getMessage());
+            exit($this->throwError($this->statusForException($e->getMessage()), $this->messageForException($e->getMessage())));
         }
         $payload = $group->toSCIM();
         unset($payload['_modified']);
@@ -1031,6 +1057,50 @@ class SCIM
                 'status' => $statusCode
             )
         ));
+    }
+
+    // Refuses plaintext HTTP when HTTPS is required, and sends HSTS over HTTPS.
+    // Runs before authentication so credentials are never processed over a
+    // plaintext connection.
+    private function enforceTransportSecurity(): void
+    {
+        $https = Utils::isHttps();
+        if ($this->requireHttps && !$https) {
+            $this->throwError(403, "HTTPS is required. This request was refused because it was made over plaintext HTTP.");
+        }
+        if ($https && $this->hstsMaxAge > 0) {
+            $header = 'Strict-Transport-Security: max-age=' . $this->hstsMaxAge;
+            if ($this->hstsIncludeSubDomains) {
+                $header .= '; includeSubDomains';
+            }
+            header($header);
+        }
+    }
+
+    // Maps a domain/validation exception code to a client-safe message so PATCH
+    // and PUT error responses never echo raw EXCEPTION_* codes.
+    private function messageForException(string $code): string
+    {
+        switch ($code) {
+            case 'EXCEPTION_USER_ALREADY_EXIST':
+                return "A user with that username already exists.";
+            case 'EXCEPTION_GROUP_ALREADY_EXIST':
+                return "A group with that display name already exists.";
+            case 'EXCEPTION_DUPLICATE_EMAIL':
+                return "A user with that email already exists.";
+            case 'EXCEPTION_INVALID_EMAIL':
+                return "The 'emails' value is not a valid email address.";
+            case 'EXCEPTION_INVALID_USER_NAME':
+                return "The 'userName' value contains invalid characters.";
+            case 'EXCEPTION_INVALID_PASSWORD':
+                return "The 'password' must be between " . User::PASSWORD_MIN_LENGTH . " and " . User::PASSWORD_MAX_LENGTH . " characters.";
+            case 'EXCEPTION_ENTRY_NOT_EXIST':
+                return "The requested resource does not exist.";
+            case 'EXCEPTION_EMPTY_ID':
+                return "A required id value was empty.";
+            default:
+                return "The request could not be completed.";
+        }
     }
 
     // Installs a safety net so an uncaught error never leaks a PHP stack trace
