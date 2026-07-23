@@ -16,7 +16,9 @@
         "bramus/router": "^1"
     },
     "require-dev": {
-        "phpunit/phpunit": "^13"
+        "phpunit/phpunit": "^13",
+        "phpstan/phpstan": "*",
+        "squizlabs/php_codesniffer": "*"
     },
     "autoload": {
         "psr-4": {
@@ -25,6 +27,9 @@
     },
     "scripts": {
         "build": "composer update --optimize-autoloader --classmap-authoritative",
-        "test": "./vendor/bin/phpunit"
+        "test": "./vendor/bin/phpunit",
+        "phpstan": "phpstan analyse",
+        "phpcs": "phpcs",
+        "phpcbf": "phpcbf"
     }
 }

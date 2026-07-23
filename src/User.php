@@ -9,6 +9,11 @@ class User
 
     CONST RESOURCE_TYPE = 'User';
     CONST SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:User';
+    // Password policy. 8 is the minimum length; 72 is the byte limit of bcrypt
+    // (PASSWORD_DEFAULT) — anything longer is silently truncated by the hash, so
+    // it is rejected rather than accepted with a misleading tail.
+    CONST PASSWORD_MIN_LENGTH = 8;
+    CONST PASSWORD_MAX_LENGTH = 72;
     private $_id = '';
     private $_created = '';
     private $_modified = '';
@@ -51,7 +56,7 @@ class User
     {
         return $this->userName;
     }
- 
+
     public function setUserName(string $userName)
     {
         if (!preg_match(Sanitizer::REGEX_NAME, $userName)) {
@@ -64,7 +69,7 @@ class User
     {
         return $this->displayName;
     }
- 
+
     public function setDisplayName(string $displayName)
     {
         $this->displayName = trim($displayName);
@@ -74,7 +79,7 @@ class User
     {
         return $this->familyName;
     }
- 
+
     public function setFamilyName(string $familyName)
     {
         $this->familyName = trim($familyName);
@@ -84,7 +89,7 @@ class User
     {
         return $this->givenName;
     }
- 
+
     public function setGivenName(string $givenName)
     {
         $this->givenName = trim($givenName);
@@ -94,7 +99,7 @@ class User
     {
         return $this->email;
     }
- 
+
     public function setEmail(string $email)
     {
         $email = trim(strtolower($email));
@@ -103,7 +108,7 @@ class User
         }
         $this->email = $email;
     }
- 
+
     public function getEmails(): array
     {
         return [$this->getEmail()];
@@ -113,12 +118,12 @@ class User
     {
         return $this->active;
     }
- 
+
     public function isActive(): bool
     {
         return $this->active;
     }
- 
+
     public function setActive(bool $active)
     {
         $this->active = $active;
@@ -128,20 +133,30 @@ class User
     {
         $this->passwordHash = self::hashPassword(trim($password));
     }
- 
+
     public function setPasswordHash(string $passwordHash)
     {
         $this->passwordHash = trim($passwordHash);
     }
- 
+
     public static function hashPassword(string $password): string
     {
-        if (empty($password)) {
-            throw new Exception('EXCEPTION_INVALID_PASSWORD');
-        }
+        self::validatePassword($password);
         return \password_hash($password, PASSWORD_DEFAULT);
     }
- 
+
+    // Enforces the password policy. Throws EXCEPTION_INVALID_PASSWORD when the
+    // (already trimmed) password is empty, shorter than PASSWORD_MIN_LENGTH, or
+    // longer than PASSWORD_MAX_LENGTH bytes. setPasswordHash bypasses this on
+    // purpose — it stores an already-hashed value, not a plaintext password.
+    public static function validatePassword(string $password): void
+    {
+        $length = strlen($password);
+        if ($length < self::PASSWORD_MIN_LENGTH || $length > self::PASSWORD_MAX_LENGTH) {
+            throw new Exception('EXCEPTION_INVALID_PASSWORD');
+        }
+    }
+
     public function verifyPassword(string $password): bool
     {
         return \password_verify(trim($password), $this->passwordHash);
@@ -178,7 +193,7 @@ class User
 
     public function getLocation(): string
     {
-        return (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]" . str_replace("index.php", "", $_SERVER['SCRIPT_NAME']) . "scim/users/" . $this->_id;
+        return (Utils::isHttps() ? "https" : "http") . "://$_SERVER[HTTP_HOST]" . str_replace("index.php", "", $_SERVER['SCRIPT_NAME']) . "scim/users/" . $this->_id;
     }
 
     public function getAttributes(): array
@@ -219,7 +234,7 @@ class User
             'created' => date(DATE_ATOM, $result['_created']),
             'lastModified' => date(DATE_ATOM, $result['_modified']),
             'version' => $etag,
-            'location' => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]" . str_replace("index.php", "", $_SERVER['SCRIPT_NAME']) . "scim/users/" . $result['id']
+            'location' => (Utils::isHttps() ? "https" : "http") . "://$_SERVER[HTTP_HOST]" . str_replace("index.php", "", $_SERVER['SCRIPT_NAME']) . "scim/users/" . $result['id']
         ];
         if ($includeEtagLastModified) {
             $result['etagLastModified'] = $result['_modified'];

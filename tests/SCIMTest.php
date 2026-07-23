@@ -57,6 +57,43 @@ class SCIMTest extends TestCase
         $this->scim->createGroup(json_encode($groupData));
     }
 
+    public function testCreateGroupWritesAuditEntry()
+    {
+        $dir = sys_get_temp_dir() . '/ua_scim_audit_' . uniqid();
+        $audit = new \VoltCMS\UserAccess\AuditLog($dir);
+        $this->scim->setAuditLog($audit);
+
+        $groupData = [
+            'schemas' => ['urn:ietf:params:scim:schemas:core:2.0:Group'],
+            'displayName' => 'Audited Group'
+        ];
+
+        $group = $this->createMock(Group::class);
+        $group->method('toSCIM')->willReturn($groupData);
+        $group->method('getId')->willReturn('group-uuid');
+        $group->method('getDisplayName')->willReturn('Audited Group');
+
+        $this->groupProviderMock->method('exists')->willReturn(false);
+        $this->groupProviderMock->expects($this->once())->method('create')->willReturn($group);
+
+        $this->expectOutputRegex('/"displayName":"Audited Group"/');
+        $this->scim->createGroup(json_encode($groupData));
+
+        $entries = array_values(array_filter(explode("\n", file_get_contents($audit->getFile()))));
+        $this->assertCount(1, $entries);
+        $entry = json_decode($entries[0], true);
+        $this->assertSame('group.create', $entry['action']);
+        $this->assertSame('Group', $entry['targetType']);
+        $this->assertSame('group-uuid', $entry['targetId']);
+        $this->assertSame('Audited Group', $entry['target']);
+        $this->assertSame('success', $entry['outcome']);
+
+        @unlink($audit->getFile());
+        @unlink($dir . '/index.html');
+        @unlink($dir . '/.htaccess');
+        @rmdir($dir);
+    }
+
     public function testGetGroup()
     {
         $groupID = '1234';
@@ -303,5 +340,50 @@ class SCIMTest extends TestCase
 
         $this->assertStringContainsString('"totalResults":1', $out);
         $this->assertStringContainsString('"id":"group-x"', $out);
+    }
+
+    public function testServiceProviderConfigDiscovery()
+    {
+        ob_start();
+        $this->scim->showServiceProviderConfig();
+        $out = ob_get_clean();
+
+        $this->assertStringContainsString('"patch":{"supported":true}', $out);
+        $this->assertStringContainsString('"sort":{"supported":false}', $out);
+        $this->assertStringContainsString('"type":"httpbasic"', $out);
+        $this->assertStringContainsString('urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig', $out);
+    }
+
+    public function testResourceTypesListAndSingle()
+    {
+        ob_start();
+        $this->scim->showResourceTypes(null);
+        $list = ob_get_clean();
+        $this->assertStringContainsString('urn:ietf:params:scim:api:messages:2.0:ListResponse', $list);
+        $this->assertStringContainsString('"id":"User"', $list);
+        $this->assertStringContainsString('"id":"Group"', $list);
+
+        ob_start();
+        $this->scim->showResourceTypes('User');
+        $single = ob_get_clean();
+        $this->assertStringContainsString('"endpoint":"/scim/users"', $single);
+        $this->assertStringContainsString('urn:ietf:params:scim:schemas:core:2.0:User', $single);
+    }
+
+    public function testSchemasListAndSingle()
+    {
+        ob_start();
+        $this->scim->showSchemas(null);
+        $list = ob_get_clean();
+        $this->assertStringContainsString('urn:ietf:params:scim:schemas:core:2.0:User', $list);
+        $this->assertStringContainsString('urn:ietf:params:scim:schemas:core:2.0:Group', $list);
+
+        ob_start();
+        $this->scim->showSchemas('urn:ietf:params:scim:schemas:core:2.0:User');
+        $single = ob_get_clean();
+        $this->assertStringContainsString('"name":"User"', $single);
+        $this->assertStringContainsString('"name":"userName"', $single);
+        // password must be advertised as write-only / never returned.
+        $this->assertStringContainsString('"mutability":"writeOnly"', $single);
     }
 }

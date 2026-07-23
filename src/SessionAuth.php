@@ -30,6 +30,7 @@ class SessionAuth
     private $loggedInUser = null;
     private $maxLoginAttempts = 10;
     private $refreshTime = 60;
+    private $throttle = null;
 
     // public static function getInstance(array $userProvider): SessionAuth {
     public static function getInstance($userProvider, $groupProvider, $maxLoginAttempts = 10, $refreshTime = 60): SessionAuth
@@ -41,12 +42,16 @@ class SessionAuth
             throw new Exception("Group Provider cannot be empty");
         }
         if (self::$instance === null) {
-            self::$instance = new static();
+            self::$instance = new self();
             self::$instance->now = time();
             self::$instance->userProvider = $userProvider;
             self::$instance->groupProvider = $groupProvider;
             self::$instance->maxLoginAttempts = $maxLoginAttempts;
             self::$instance->refreshTime = $refreshTime;
+            // Shared, session-independent brute-force lockout (keyed by
+            // identifier + client IP) so dropping the session cookie cannot
+            // reset the attempt counter.
+            self::$instance->throttle = new LoginThrottle(null, $maxLoginAttempts);
             self::$instance->startSession();
         }
         return self::$instance;
@@ -69,7 +74,7 @@ class SessionAuth
             $session_settings = [
                 'httponly' => true,
                 'samesite' => 'Strict',
-                'secure' => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on'),
+                'secure' => Utils::isHttps(),
             ];
             session_set_cookie_params($session_settings);
             session_start();
@@ -155,29 +160,51 @@ class SessionAuth
     public function login(string $userName, string $password, ?string $csrf_token = null): bool
     {
         $result = false;
+        $attempted = false;
+        $locked = false;
         $userName = trim(strtolower($userName));
         $password = trim($password);
+        $throttleKey = $this->throttle->key($userName);
         if (!empty($userName) && !empty($password)) {
-            $user = $this->get($userName);
-            if ($user !== null && $user->isActive() && $_SESSION[self::UA_ATTEMPTS] < $this->maxLoginAttempts + 1) {
-                if ($user->verifyPassword($password)) {
-                    if (empty($csrf_token) || hash_equals($_SESSION[self::UA_CSRF], $csrf_token)) {
-                        // Prevent session fixation: issue a fresh session id on
-                        // privilege change (successful authentication).
-                        if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
-                            session_regenerate_id(true);
+            if ($this->throttle->isLocked($throttleKey)) {
+                // Too many recent failures for this identifier + IP. Refuse
+                // without checking the password (shared storage means this
+                // holds even for a request that dropped the session cookie).
+                $locked = true;
+            } else {
+                $attempted = true;
+                $user = $this->get($userName);
+                if ($user !== null && $user->isActive() && $_SESSION[self::UA_ATTEMPTS] < $this->maxLoginAttempts + 1) {
+                    if ($user->verifyPassword($password)) {
+                        if (empty($csrf_token) || hash_equals($_SESSION[self::UA_CSRF], $csrf_token)) {
+                            // Prevent session fixation: issue a fresh session id on
+                            // privilege change (successful authentication).
+                            if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
+                                session_regenerate_id(true);
+                            }
+                            $this->setSessionInfo($user, 0);
+                            $this->throttle->reset($throttleKey);
+                            $result = true;
                         }
-                        $this->setSessionInfo($user, 0);
-                        $result = true;
                     }
                 }
             }
         }
         if (!$result) {
+            if ($attempted) {
+                $this->throttle->registerFailure($throttleKey);
+            }
             $this->setSessionInfo(null, $_SESSION[self::UA_ATTEMPTS] + 1);
-            http_response_code(401);
+            http_response_code($locked ? 429 : 401);
         }
         return $result;
+    }
+
+    // Exposes the per-session CSRF token so a login form can echo it back and
+    // exercise the CSRF check in login().
+    public function getCsrfToken(): string
+    {
+        return $_SESSION[self::UA_CSRF] ?? '';
     }
 
     public function isLoggedIn(): bool

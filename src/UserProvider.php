@@ -19,8 +19,9 @@ class UserProvider implements UserProviderInterface
             } else {
                 $directory = $config['directory'];
             }
-            self::$instance = new static();
+            self::$instance = new self();
             self::$db = new FileDB($directory);
+            Utils::protectDirectory($directory);
         }
         return self::$instance;
     }
@@ -69,14 +70,16 @@ class UserProvider implements UserProviderInterface
 
     public function create(User $user): User
     {
-        if ($this->exists('userName', $user->getUserName())) {
-            throw new Exception('EXCEPTION_USER_ALREADY_EXIST');
-        } else if (!empty($user->getEmail()) && !empty($this->find('email', $user->getEmail()))) {
-            throw new Exception('EXCEPTION_DUPLICATE_EMAIL');
-        } else {
-            $id = self::$db->create($user->getAttributes());
-            return $this->documentToEntry(self::$db->read($id)[0]);
-        }
+        return Lock::exclusive(function () use ($user) {
+            if ($this->exists('userName', $user->getUserName())) {
+                throw new Exception('EXCEPTION_USER_ALREADY_EXIST');
+            } else if (!empty($user->getEmail()) && !empty($this->find('email', $user->getEmail()))) {
+                throw new Exception('EXCEPTION_DUPLICATE_EMAIL');
+            } else {
+                $id = self::$db->create($user->getAttributes());
+                return $this->documentToEntry(self::$db->read($id)[0]);
+            }
+        });
     }
 
     public function readAll(): array
@@ -97,42 +100,51 @@ class UserProvider implements UserProviderInterface
 
     public function update(User $user): User
     {
-        if ($this->exists('id', $user->getId())) {
-            if (!empty($user->getEmail())) {
-                $items = $this->find('email', $user->getEmail());
-                if (!empty($items) && $items[0]->getId() != $user->getId()) {
-                    throw new Exception('EXCEPTION_DUPLICATE_EMAIL');
+        return Lock::exclusive(function () use ($user) {
+            if ($this->exists('id', $user->getId())) {
+                if (!empty($user->getEmail())) {
+                    $items = $this->find('email', $user->getEmail());
+                    if (!empty($items) && $items[0]->getId() != $user->getId()) {
+                        throw new Exception('EXCEPTION_DUPLICATE_EMAIL');
+                    }
                 }
+                self::$db->update($user->getId(), $user->getAttributes());
+                return $user;
+            } else {
+                throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
             }
-            self::$db->update($user->getId(), $user->getAttributes());
-            return $user;
-        } else {
-            throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
-        }
+        });
     }
 
     public function delete(string $id)
     {
         $id = trim(strtolower($id));
-        if ($this->exists('id', $id)) {
-            self::$db->delete($id);
-            // Remove the deleted user from every group they belonged to so no
-            // stale membership references are left behind.
-            $groupProvider = GroupProvider::getInstance();
-            foreach ($groupProvider->readAll() as $group) {
-                if ($group->hasMember($id)) {
-                    $group->removeMember($id);
-                    $groupProvider->update($group);
+        // The whole delete-then-strip-from-groups sequence runs under one
+        // exclusive lock so it is atomic relative to other writers (the nested
+        // GroupProvider::update calls re-enter the same reentrant lock).
+        Lock::exclusive(function () use ($id) {
+            if ($this->exists('id', $id)) {
+                self::$db->delete($id);
+                // Remove the deleted user from every group they belonged to so no
+                // stale membership references are left behind.
+                $groupProvider = GroupProvider::getInstance();
+                foreach ($groupProvider->readAll() as $group) {
+                    if ($group->hasMember($id)) {
+                        $group->removeMember($id);
+                        $groupProvider->update($group);
+                    }
                 }
+            } else {
+                throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
             }
-        } else {
-            throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
-        }
+        });
     }
 
     public function deleteAll()
     {
-        self::$db->deleteAll();
+        Lock::exclusive(function () {
+            self::$db->deleteAll();
+        });
     }
 
     private function documentsToEntries(array $items): array

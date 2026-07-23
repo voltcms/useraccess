@@ -113,7 +113,7 @@ class Group
             'created' => date(DATE_ATOM, $result['_created']),
             'lastModified' => date(DATE_ATOM, $result['_modified']),
             'version' => $etag,
-            'location' => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]" . str_replace("index.php", "", $_SERVER['SCRIPT_NAME']) . "scim/groups/" . $result['id']
+            'location' => (Utils::isHttps() ? "https" : "http") . "://$_SERVER[HTTP_HOST]" . str_replace("index.php", "", $_SERVER['SCRIPT_NAME']) . "scim/groups/" . $result['id']
         ];
         if ($includeEtagLastModified) {
             $result['etagLastModified'] = $result['_modified'];

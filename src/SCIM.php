@@ -13,21 +13,73 @@ class SCIM
     private $userProvider;
     private $groupProvider;
     private $sessionAuth;
+    private $bearerAuth;
     private $router;
     private $enforceAuthentication;
     private $loggedInUser;
+    private $requireHttps = false;
+    private $hstsMaxAge = 0;
+    private $hstsIncludeSubDomains = true;
+    private $auditLog;
+    private $auditActor = 'anonymous';
+    private $auditActorType = 'none';
 
-    public function __construct(UserProviderInterface $userProvider, GroupProviderInterface $groupProvider, bool $enforceAuthentication = false)
+    // $enforceAuthentication defaults to TRUE (secure by default): unless a
+    // caller explicitly opts out, the router requires a logged-in admin
+    // session or valid HTTP Basic admin credentials for every request.
+    public function __construct(UserProviderInterface $userProvider, GroupProviderInterface $groupProvider, bool $enforceAuthentication = true)
     {
         $this->userProvider = $userProvider;
         $this->groupProvider = $groupProvider;
         $this->sessionAuth = SessionAuth::getInstance($this->userProvider, $this->groupProvider);
+        $this->bearerAuth = new BearerAuth();
+        $this->auditLog = new AuditLog();
         $this->router = new Router();
         $this->enforceAuthentication = $enforceAuthentication;
     }
 
+    // Enables audit logging of administrative actions (create/update/patch/
+    // delete of users and groups) to an append-only JSON-Lines file in
+    // $directory. Off by default. The directory holds usernames and actor IPs,
+    // so keep it outside the web root.
+    public function setAuditLogDirectory(string $directory): void
+    {
+        $this->auditLog = new AuditLog($directory);
+    }
+
+    // Injects a preconfigured AuditLog (custom sink or tests).
+    public function setAuditLog(AuditLog $auditLog): void
+    {
+        $this->auditLog = $auditLog;
+    }
+
+    // Configures OAuth 2.0 Bearer-token authentication. A request that presents
+    // any of these tokens as `Authorization: Bearer <token>` is authorized as
+    // the provisioning service (admin), which is how IdPs such as Okta and
+    // Entra/Azure AD provision over SCIM. Tokens are held only as hashes. This
+    // is opt-in and additive: session and HTTP Basic auth keep working.
+    public function setBearerTokens(array $tokens): void
+    {
+        $this->bearerAuth->setTokens($tokens);
+    }
+
+    // Enables HTTPS enforcement for the router. When on, plaintext HTTP requests
+    // are refused (so Basic-auth credentials and session cookies can never travel
+    // in the clear) and, over HTTPS, an HSTS header is sent. Off by default
+    // because TLS topology is deployment-specific (proxies, localhost, internal
+    // networks) and the local demo runs over http; production should call this.
+    public function setHttpsPolicy(bool $requireHttps = true, int $hstsMaxAge = 31536000, bool $hstsIncludeSubDomains = true): void
+    {
+        $this->requireHttps = $requireHttps;
+        $this->hstsMaxAge = max(0, $hstsMaxAge);
+        $this->hstsIncludeSubDomains = $hstsIncludeSubDomains;
+    }
+
     public function runRouter()
     {
+        $this->installErrorHandling();
+        $this->enforceTransportSecurity();
+
         $this->router->set404(function () {
             //header('HTTP/1.1 404 Not Found');
             // ... do something special here
@@ -36,15 +88,25 @@ class SCIM
 
         if ($this->enforceAuthentication) {
             $this->loggedInUser = $this->sessionAuth->getLoggedInUser();
+            $method = 'session';
             if (!$this->loggedInUser) {
                 $this->loggedInUser = HeaderAuth::checkBasicAuthentication($this->userProvider);
+                $method = 'basic';
             }
-            if (!$this->loggedInUser) {
-                $this->throwError(401, "Unauthorized");
-            } else {
+            if ($this->loggedInUser) {
+                // Session or HTTP Basic identified a user: require admin rights.
                 if (!$this->loggedInUser->isAdmin()) {
                     $this->throwError(403, "Forbidden");
                 }
+                $this->auditActor = $this->loggedInUser->getUserName();
+                $this->auditActorType = $method;
+            } elseif ($this->bearerAuth->authenticate()) {
+                // A valid Bearer token authorizes the request as the
+                // provisioning service (admin) without a per-user lookup.
+                $this->auditActor = 'bearer-token';
+                $this->auditActorType = 'bearer';
+            } else {
+                $this->throwError(401, "Unauthorized");
             }
         }
 
@@ -88,12 +150,35 @@ class SCIM
             $this->deleteGroup($id);
         });
 
-        // Meta
+        // Discovery / meta (RFC 7644 §4). Both the plural (legacy) and singular
+        // (RFC) ServiceProviderConfig paths are served.
         $this->router->get('/scim/ServiceProviderConfigs', function () {
             $this->showServiceProviderConfig();
         });
+        $this->router->get('/scim/ServiceProviderConfig', function () {
+            $this->showServiceProviderConfig();
+        });
+        $this->router->get('/scim/ResourceTypes', function () {
+            $this->showResourceTypes(null);
+        });
+        $this->router->get('/scim/ResourceTypes/([A-Za-z]+)', function ($id) {
+            $this->showResourceTypes($id);
+        });
+        $this->router->get('/scim/Schemas', function () {
+            $this->showSchemas(null);
+        });
+        $this->router->get('/scim/Schemas/(.+)', function ($id) {
+            $this->showSchemas($id);
+        });
 
-        // Other like Me, ResourceTypes, Schemas, Bulk
+        // The resource representing the authenticated subject (RFC 7644 §3.11).
+        $this->router->get('/scim/Me', function () {
+            $this->showMe();
+        });
+
+        // Bulk and sort remain unsupported (advertised as such in
+        // ServiceProviderConfig); filtering supports a single `attribute eq
+        // "value"` expression.
 
         $this->router->run();
     }
@@ -112,26 +197,35 @@ class SCIM
             }
             $attributes[$key] = $value;
         }
-        $user->fromSCIM($attributes);
         try {
+            // fromSCIM runs the entity setters, which validate (email format,
+            // username charset, non-empty password) and throw EXCEPTION_* codes;
+            // keep it inside the try so those become clean 4xx responses instead
+            // of an uncaught fatal.
+            $user->fromSCIM($attributes);
             $user = $this->userProvider->create($user);
         } catch (Exception $e) {
-            error_log('Message: ' . $e->getMessage());
+            error_log('createUser failed: ' . $e->getMessage());
             switch ($e->getMessage()) {
                 case 'EXCEPTION_USER_ALREADY_EXIST':
                     exit($this->throwError(409, "User with username " . $user->getUserName() . " already exists."));
-                    break;
                 case 'EXCEPTION_DUPLICATE_EMAIL':
                     exit($this->throwError(409, "User with email " . $user->getEmail() . " already exists."));
-                    break;
+                case 'EXCEPTION_INVALID_EMAIL':
+                    exit($this->throwError(400, "The 'emails' value is not a valid email address."));
+                case 'EXCEPTION_INVALID_USER_NAME':
+                    exit($this->throwError(400, "The 'userName' value contains invalid characters."));
+                case 'EXCEPTION_INVALID_PASSWORD':
+                    exit($this->throwError(400, $this->messageForException('EXCEPTION_INVALID_PASSWORD')));
                 default:
-                    exit($this->throwError(409, $e->getMessage()));
-                    break;
+                    // Never surface raw internal exception codes to the client.
+                    exit($this->throwError(500, "The user could not be created due to an internal error."));
             }
         }
+        $this->writeAudit('user.create', 'User', $user->getId(), $user->getUserName());
         $payload = $user->toSCIM();
         unset($payload['_modified']);
-        header("Content-Type: application/json", true, 201);
+        header("Content-Type: application/scim+json", true, 201);
         echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
     }
 
@@ -152,7 +246,7 @@ class SCIM
         // $payload['userName'] = $attributes['userName'];
 
         // if(isset($attributes['externalId']))
-        //     $payload['externalId'] = $attributes['externalId'];    
+        //     $payload['externalId'] = $attributes['externalId'];
 
         // if(isset($attributes['name']))
         //     $payload['name'] = $attributes['name'];
@@ -202,14 +296,14 @@ class SCIM
         // $payload['groups'] = [];
         // foreach($groups as $group)
         // {
-        //     $groupAttributes = $this->db->getResourceAttributes($group);    
+        //     $groupAttributes = $this->db->getResourceAttributes($group);
         //     $grp = array("value" => $group, "displayName" => $groupAttributes['displayName']);
         //     $payload['groups'][] = $grp;
         // }
         // if(isset($attributes['entitlements']))
-        //     $payload['entitlements'] = $attributes['entitlements'];    
+        //     $payload['entitlements'] = $attributes['entitlements'];
         // if(isset($attributes['roles']))
-        //     $payload['roles'] = $attributes['roles'];    
+        //     $payload['roles'] = $attributes['roles'];
         // if(count($schemas) > 1)
         //     foreach($schemas as $schema)
         //     {
@@ -225,7 +319,7 @@ class SCIM
         //     "location" => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]" . str_replace("index.php", "", $_SERVER['SCRIPT_NAME']) . "scim/users/" . $userID
         // );
 
-        header("Content-Type: application/json", true, 200);
+        header("Content-Type: application/scim+json", true, 200);
         echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
     }
 
@@ -233,7 +327,7 @@ class SCIM
     {
         $users = $this->findByFilter($this->userProvider, $options);
         $payload = $this->buildListResponse($users, $options);
-        header('Content-Type: application/json', true, 200);
+        header('Content-Type: application/scim+json', true, 200);
         echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
     }
 
@@ -260,11 +354,17 @@ class SCIM
             }
             $attributes[$key] = $value;
         }
-        $user->fromSCIM($attributes);
-        $user = $this->userProvider->update($user);
+        try {
+            $user->fromSCIM($attributes);
+            $user = $this->userProvider->update($user);
+        } catch (Exception $e) {
+            error_log('putUser failed: ' . $e->getMessage());
+            exit($this->throwError($this->statusForException($e->getMessage()), $this->messageForException($e->getMessage())));
+        }
+        $this->writeAudit('user.update', 'User', $user->getId(), $user->getUserName());
         $payload = $user->toSCIM();
         unset($payload['_modified']);
-        header("Content-Type: application/json", true, 200);
+        header("Content-Type: application/scim+json", true, 200);
         echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
     }
 
@@ -294,11 +394,13 @@ class SCIM
             }
             $user = $this->userProvider->update($user);
         } catch (Exception $e) {
-            exit($this->throwError($this->statusForException($e->getMessage()), $e->getMessage()));
+            error_log('patchUser failed: ' . $e->getMessage());
+            exit($this->throwError($this->statusForException($e->getMessage()), $this->messageForException($e->getMessage())));
         }
+        $this->writeAudit('user.patch', 'User', $user->getId(), $user->getUserName());
         $payload = $user->toSCIM();
         unset($payload['_modified']);
-        header("Content-Type: application/json", true, 200);
+        header("Content-Type: application/scim+json", true, 200);
         echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
     }
 
@@ -307,8 +409,18 @@ class SCIM
         if (!$this->userProvider->exists('id', $userID)) {
             $this->throwError(404, "Selected user does not exist.");
         }
+        // Capture the username before deletion so the audit entry is meaningful.
+        $userName = null;
+        if ($this->auditLog->isEnabled()) {
+            try {
+                $userName = $this->userProvider->read('id', $userID)->getUserName();
+            } catch (Exception $e) {
+                // Best effort — proceed with the delete regardless.
+            }
+        }
         $this->userProvider->delete($userID);
-        header("Content-Type: application/json", true, 204);
+        $this->writeAudit('user.delete', 'User', $userID, $userName);
+        header("Content-Type: application/scim+json", true, 204);
     }
 
     private function parseUserPayload($payload, $userCheck = false)
@@ -395,16 +507,19 @@ class SCIM
                 exit($this->throwError(400, "The 'timezone' field was sent incorrectly in the request."));
             }
         }
-        if (array_key_exists('active', $payload) && $payload['active'] != "") {
+        if (array_key_exists('active', $payload) && $payload['active'] !== "") {
             if (!is_bool($payload['active']) && !is_integer($payload['active'])) {
                 exit($this->throwError(400, "The 'active' field was sent incorrectly in the request."));
             }
-        }
-        if (!array_key_exists('active', $payload) || $payload['active'] == "" || $payload['active'] == 0) {
-            $payload['active'] = false;
-        }
-        if (array_key_exists('active', $payload) && $payload['active'] == 1) {
-            $payload['active'] = true;
+            // Normalize an explicit value to a real bool.
+            $payload['active'] = ($payload['active'] === true || $payload['active'] === 1);
+        } else {
+            // 'active' was omitted (or empty). Do NOT force a value: on create
+            // the User entity defaults to active=true, and on a PUT replace the
+            // existing value is preserved (fromSCIM only assigns 'active' when
+            // present). This removes the footgun where a PUT that omitted
+            // 'active' silently deactivated the user.
+            unset($payload['active']);
         }
         if (array_key_exists('emails', $payload) && $payload['emails'] != "") {
             if (!is_array($payload['emails'])) {
@@ -525,9 +640,10 @@ class SCIM
         }
         $group->fromSCIM($attributes);
         $group = $this->groupProvider->create($group);
+        $this->writeAudit('group.create', 'Group', $group->getId(), $group->getDisplayName());
         $payload = $group->toSCIM();
         unset($payload['_modified']);
-        header("Content-Type: application/json", true, 201);
+        header("Content-Type: application/scim+json", true, 201);
         echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
     }
 
@@ -542,7 +658,7 @@ class SCIM
         header("Etag: " . $payload['meta']['version']);
         header("Last-Modified: " . gmdate("D, d M Y H:i:s", $payload['etagLastModified']) . " GMT");
         unset($payload['etagLastModified']);
-        header("Content-Type: application/json", true, 200);
+        header("Content-Type: application/scim+json", true, 200);
         echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
 
         // if (!$this->db->groupExists($groupID, "2.0"))
@@ -580,7 +696,7 @@ class SCIM
         //     "location" => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]" . str_replace("index.php", "", $_SERVER['SCRIPT_NAME']) . "scim/groups/" . $groupID
         // );
         // if ($isIncluded == '')
-        //     header("Content-Type: application/json", true, 200);
+        //     header("Content-Type: application/scim+json", true, 200);
         // if ($isIncluded != '')
         //     return preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
         // else
@@ -591,7 +707,7 @@ class SCIM
     {
         $groups = $this->findByFilter($this->groupProvider, $options);
         $payload = $this->buildListResponse($groups, $options);
-        header('Content-Type: application/json', true, 200);
+        header('Content-Type: application/scim+json', true, 200);
         echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
     }
 
@@ -611,11 +727,13 @@ class SCIM
             }
             $group = $this->groupProvider->update($group);
         } catch (Exception $e) {
-            exit($this->throwError($this->statusForException($e->getMessage()), $e->getMessage()));
+            error_log('patchGroup failed: ' . $e->getMessage());
+            exit($this->throwError($this->statusForException($e->getMessage()), $this->messageForException($e->getMessage())));
         }
+        $this->writeAudit('group.patch', 'Group', $group->getId(), $group->getDisplayName());
         $payload = $group->toSCIM();
         unset($payload['_modified']);
-        header("Content-Type: application/json", true, 200);
+        header("Content-Type: application/scim+json", true, 200);
         echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
     }
 
@@ -645,9 +763,10 @@ class SCIM
         }
         $group->fromSCIM($attributes);
         $group = $this->groupProvider->update($group);
+        $this->writeAudit('group.update', 'Group', $group->getId(), $group->getDisplayName());
         $payload = $group->toSCIM();
         unset($payload['_modified']);
-        header("Content-Type: application/json", true, 200);
+        header("Content-Type: application/scim+json", true, 200);
         echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
     }
 
@@ -661,7 +780,8 @@ class SCIM
             $this->throwError(403, "Forbidden");
         }
         $this->groupProvider->delete($groupID);
-        header("Content-Type: application/json", true, 204);
+        $this->writeAudit('group.delete', 'Group', $groupID, $group->getDisplayName());
+        header("Content-Type: application/scim+json", true, 204);
     }
 
     private function parseGroupPayload($payload, $groupCheck = false)
@@ -685,7 +805,6 @@ class SCIM
 
     public function showServiceProviderConfig()
     {
-        header("Content-Type: application/json", true, 200);
         $payload = [];
         $payload['schemas'] = array("urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig");
         $payload['patch'] = array("supported" => true);
@@ -694,11 +813,160 @@ class SCIM
         $payload['changePassword'] = array("supported" => true);
         $payload['sort'] = array("supported" => false);
         $payload['etag'] = array("supported" => true);
-        $payload['authenticationSchemes'] = array(
-            // array("name" => "OAuth Bearer Token", "description" => "Authentication Scheme using the OAuth Bearer Token Standard", "type" => "oauthbearertoken"),
-            array("name" => "HTTP Basic", "description" => "Authentication Scheme using the Http Basic Standard", "type" => "httpbasic")
+        $payload['authenticationSchemes'] = array();
+        if ($this->bearerAuth->isConfigured()) {
+            $payload['authenticationSchemes'][] = array("name" => "OAuth Bearer Token", "description" => "Authentication scheme using the OAuth Bearer Token standard", "type" => "oauthbearertoken");
+        }
+        $payload['authenticationSchemes'][] = array("name" => "HTTP Basic", "description" => "Authentication Scheme using the Http Basic Standard", "type" => "httpbasic");
+        $payload['meta'] = array("resourceType" => "ServiceProviderConfig", "location" => $this->baseUrl() . "scim/ServiceProviderConfig");
+        $this->emitScim($payload);
+    }
+
+    // Returns the resource for the authenticated subject (RFC 7644 §3.11). Only
+    // meaningful for a user-authenticated request (session / HTTP Basic); a
+    // Bearer service token has no user to resolve, so /Me is a 404 there.
+    public function showMe()
+    {
+        if (!$this->loggedInUser) {
+            $this->throwError(404, "No authenticated user is associated with this request.");
+        }
+        $payload = $this->loggedInUser->toSCIM(true);
+        header("Etag: " . $payload['meta']['version']);
+        header("Last-Modified: " . gmdate("D, d M Y H:i:s", $payload['etagLastModified']) . " GMT");
+        unset($payload['etagLastModified']);
+        $this->emitScim($payload);
+    }
+
+    // Discovery: the resource types this provider exposes (RFC 7644 §4).
+    public function showResourceTypes($id)
+    {
+        $types = array(
+            'User' => array(
+                'schemas' => array('urn:ietf:params:scim:schemas:core:2.0:ResourceType'),
+                'id' => 'User',
+                'name' => 'User',
+                'endpoint' => '/scim/users',
+                'description' => 'User Account',
+                'schema' => User::SCHEMA,
+                'meta' => array('resourceType' => 'ResourceType', 'location' => $this->baseUrl() . 'scim/ResourceTypes/User'),
+            ),
+            'Group' => array(
+                'schemas' => array('urn:ietf:params:scim:schemas:core:2.0:ResourceType'),
+                'id' => 'Group',
+                'name' => 'Group',
+                'endpoint' => '/scim/groups',
+                'description' => 'Group',
+                'schema' => Group::SCHEMA,
+                'meta' => array('resourceType' => 'ResourceType', 'location' => $this->baseUrl() . 'scim/ResourceTypes/Group'),
+            ),
         );
-        echo json_encode($payload);
+        if ($id !== null) {
+            if (!array_key_exists($id, $types)) {
+                $this->throwError(404, "ResourceType '" . htmlentities((string) $id, ENT_QUOTES) . "' does not exist.");
+            }
+            $this->emitScim($types[$id]);
+            return;
+        }
+        $this->emitScim($this->listResponse(array_values($types)));
+    }
+
+    // Discovery: the schema definitions for the User and Group resources
+    // (RFC 7643 §7). A compact-but-valid representation of the attributes this
+    // implementation actually supports.
+    public function showSchemas($id)
+    {
+        $schemas = array(
+            User::SCHEMA => array(
+                'schemas' => array('urn:ietf:params:scim:schemas:core:2.0:Schema'),
+                'id' => User::SCHEMA,
+                'name' => 'User',
+                'description' => 'User Account',
+                'attributes' => array(
+                    $this->attributeDef('userName', 'string', array('required' => true, 'uniqueness' => 'server')),
+                    $this->attributeDef('name', 'complex', array('subAttributes' => array(
+                        $this->attributeDef('givenName', 'string'),
+                        $this->attributeDef('familyName', 'string'),
+                    ))),
+                    $this->attributeDef('displayName', 'string'),
+                    $this->attributeDef('active', 'boolean'),
+                    $this->attributeDef('emails', 'complex', array('multiValued' => true, 'subAttributes' => array(
+                        $this->attributeDef('value', 'string'),
+                        $this->attributeDef('type', 'string'),
+                        $this->attributeDef('primary', 'boolean'),
+                    ))),
+                    $this->attributeDef('password', 'string', array('mutability' => 'writeOnly', 'returned' => 'never')),
+                ),
+                'meta' => array('resourceType' => 'Schema', 'location' => $this->baseUrl() . 'scim/Schemas/' . User::SCHEMA),
+            ),
+            Group::SCHEMA => array(
+                'schemas' => array('urn:ietf:params:scim:schemas:core:2.0:Schema'),
+                'id' => Group::SCHEMA,
+                'name' => 'Group',
+                'description' => 'Group',
+                'attributes' => array(
+                    $this->attributeDef('displayName', 'string', array('required' => true)),
+                    $this->attributeDef('members', 'complex', array('multiValued' => true, 'subAttributes' => array(
+                        $this->attributeDef('value', 'string'),
+                        $this->attributeDef('display', 'string'),
+                        $this->attributeDef('$ref', 'reference'),
+                    ))),
+                ),
+                'meta' => array('resourceType' => 'Schema', 'location' => $this->baseUrl() . 'scim/Schemas/' . Group::SCHEMA),
+            ),
+        );
+        if ($id !== null) {
+            if (!array_key_exists($id, $schemas)) {
+                $this->throwError(404, "Schema '" . htmlentities((string) $id, ENT_QUOTES) . "' does not exist.");
+            }
+            $this->emitScim($schemas[$id]);
+            return;
+        }
+        $this->emitScim($this->listResponse(array_values($schemas)));
+    }
+
+    // Builds a single SCIM attribute definition with sensible defaults.
+    private function attributeDef(string $name, string $type, array $overrides = array()): array
+    {
+        return array_merge(array(
+            'name' => $name,
+            'type' => $type,
+            'multiValued' => false,
+            'required' => false,
+            'caseExact' => false,
+            'mutability' => 'readWrite',
+            'returned' => 'default',
+            'uniqueness' => 'none',
+        ), $overrides);
+    }
+
+    // Wraps a set of resources in a SCIM ListResponse (used by discovery
+    // endpoints, which are not paginated).
+    private function listResponse(array $resources): array
+    {
+        return array(
+            'schemas' => array('urn:ietf:params:scim:api:messages:2.0:ListResponse'),
+            'totalResults' => count($resources),
+            'startIndex' => 1,
+            'itemsPerPage' => count($resources),
+            'Resources' => $resources,
+        );
+    }
+
+    // The absolute base URL of this SCIM deployment, derived from the request
+    // (mirrors the location logic in User/Group::toSCIM).
+    private function baseUrl(): string
+    {
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $script = $_SERVER['SCRIPT_NAME'] ?? '';
+        return (Utils::isHttps() ? 'https' : 'http') . '://' . $host . str_replace('index.php', '', $script);
+    }
+
+    // Emits a SCIM JSON body with the RFC 7644 `application/scim+json` content
+    // type, stripping control characters (the project-wide output idiom).
+    private function emitScim(array $payload, int $status = 200): void
+    {
+        header('Content-Type: application/scim+json', true, $status);
+        echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
     }
 
     // Runs an optional `attribute eq "value"` filter against a provider, or
@@ -1010,13 +1278,117 @@ class SCIM
 
     public function throwError($statusCode, $description)
     {
-        header("Content-Type: application/json", true, $statusCode);
+        header("Content-Type: application/scim+json", true, $statusCode);
         exit(json_encode(
             array(
                 'schemas' => array("urn:ietf:params:scim:api:messages:2.0:Error"),
                 'detail' => $description,
                 'status' => $statusCode
             )
+        ));
+    }
+
+    // Refuses plaintext HTTP when HTTPS is required, and sends HSTS over HTTPS.
+    // Runs before authentication so credentials are never processed over a
+    // plaintext connection.
+    private function enforceTransportSecurity(): void
+    {
+        $https = Utils::isHttps();
+        if ($this->requireHttps && !$https) {
+            $this->throwError(403, "HTTPS is required. This request was refused because it was made over plaintext HTTP.");
+        }
+        if ($https && $this->hstsMaxAge > 0) {
+            $header = 'Strict-Transport-Security: max-age=' . $this->hstsMaxAge;
+            if ($this->hstsIncludeSubDomains) {
+                $header .= '; includeSubDomains';
+            }
+            header($header);
+        }
+    }
+
+    // Records a successful administrative mutation to the audit log (no-op when
+    // auditing is disabled). Captures the authenticated actor, its auth method,
+    // the client IP, and the affected resource.
+    private function writeAudit(string $action, string $targetType, ?string $targetId, ?string $target): void
+    {
+        if (!$this->auditLog->isEnabled()) {
+            return;
+        }
+        $this->auditLog->record(array(
+            'actor' => $this->auditActor,
+            'actorType' => $this->auditActorType,
+            'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
+            'action' => $action,
+            'targetType' => $targetType,
+            'targetId' => $targetId,
+            'target' => $target,
+            'outcome' => 'success',
+        ));
+    }
+
+    // Maps a domain/validation exception code to a client-safe message so PATCH
+    // and PUT error responses never echo raw EXCEPTION_* codes.
+    private function messageForException(string $code): string
+    {
+        switch ($code) {
+            case 'EXCEPTION_USER_ALREADY_EXIST':
+                return "A user with that username already exists.";
+            case 'EXCEPTION_GROUP_ALREADY_EXIST':
+                return "A group with that display name already exists.";
+            case 'EXCEPTION_DUPLICATE_EMAIL':
+                return "A user with that email already exists.";
+            case 'EXCEPTION_INVALID_EMAIL':
+                return "The 'emails' value is not a valid email address.";
+            case 'EXCEPTION_INVALID_USER_NAME':
+                return "The 'userName' value contains invalid characters.";
+            case 'EXCEPTION_INVALID_PASSWORD':
+                return "The 'password' must be between " . User::PASSWORD_MIN_LENGTH . " and " . User::PASSWORD_MAX_LENGTH . " characters.";
+            case 'EXCEPTION_ENTRY_NOT_EXIST':
+                return "The requested resource does not exist.";
+            case 'EXCEPTION_EMPTY_ID':
+                return "A required id value was empty.";
+            default:
+                return "The request could not be completed.";
+        }
+    }
+
+    // Installs a safety net so an uncaught error never leaks a PHP stack trace
+    // to the client. Disables display_errors (errors go to the log instead),
+    // and converts any uncaught exception or fatal into a clean SCIM 500 error
+    // body. Wired from runRouter() so it only affects live request handling,
+    // not unit tests that call handler methods directly.
+    private function installErrorHandling(): void
+    {
+        ini_set('display_errors', '0');
+        ini_set('log_errors', '1');
+
+        set_exception_handler(function (\Throwable $e) {
+            error_log('SCIM uncaught exception: ' . $e);
+            $this->emitInternalError();
+        });
+
+        register_shutdown_function(function () {
+            $error = error_get_last();
+            $fatal = array(E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR);
+            if ($error !== null && in_array($error['type'], $fatal, true)) {
+                error_log('SCIM fatal error: ' . $error['message'] . ' in ' . $error['file'] . ':' . $error['line']);
+                $this->emitInternalError();
+            }
+        });
+    }
+
+    // Emits a generic SCIM 500 error, but only if nothing has been sent yet,
+    // so a fault mid-response cannot corrupt an already-started body.
+    private function emitInternalError(): void
+    {
+        if (headers_sent()) {
+            return;
+        }
+        header("Content-Type: application/scim+json", true, 500);
+        echo json_encode(array(
+            'schemas' => array("urn:ietf:params:scim:api:messages:2.0:Error"),
+            'detail' => 'An internal server error occurred.',
+            'status' => 500
         ));
     }
 }
