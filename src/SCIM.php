@@ -13,6 +13,7 @@ class SCIM
     private $userProvider;
     private $groupProvider;
     private $sessionAuth;
+    private $bearerAuth;
     private $router;
     private $enforceAuthentication;
     private $loggedInUser;
@@ -28,8 +29,19 @@ class SCIM
         $this->userProvider = $userProvider;
         $this->groupProvider = $groupProvider;
         $this->sessionAuth = SessionAuth::getInstance($this->userProvider, $this->groupProvider);
+        $this->bearerAuth = new BearerAuth();
         $this->router = new Router();
         $this->enforceAuthentication = $enforceAuthentication;
+    }
+
+    // Configures OAuth 2.0 Bearer-token authentication. A request that presents
+    // any of these tokens as `Authorization: Bearer <token>` is authorized as
+    // the provisioning service (admin), which is how IdPs such as Okta and
+    // Entra/Azure AD provision over SCIM. Tokens are held only as hashes. This
+    // is opt-in and additive: session and HTTP Basic auth keep working.
+    public function setBearerTokens(array $tokens): void
+    {
+        $this->bearerAuth->setTokens($tokens);
     }
 
     // Enables HTTPS enforcement for the router. When on, plaintext HTTP requests
@@ -60,12 +72,16 @@ class SCIM
             if (!$this->loggedInUser) {
                 $this->loggedInUser = HeaderAuth::checkBasicAuthentication($this->userProvider);
             }
-            if (!$this->loggedInUser) {
-                $this->throwError(401, "Unauthorized");
-            } else {
+            if ($this->loggedInUser) {
+                // Session or HTTP Basic identified a user: require admin rights.
                 if (!$this->loggedInUser->isAdmin()) {
                     $this->throwError(403, "Forbidden");
                 }
+            } elseif ($this->bearerAuth->authenticate()) {
+                // A valid Bearer token authorizes the request as the
+                // provisioning service (admin) without a per-user lookup.
+            } else {
+                $this->throwError(401, "Unauthorized");
             }
         }
 
@@ -733,10 +749,11 @@ class SCIM
         $payload['changePassword'] = array("supported" => true);
         $payload['sort'] = array("supported" => false);
         $payload['etag'] = array("supported" => true);
-        $payload['authenticationSchemes'] = array(
-            // array("name" => "OAuth Bearer Token", "description" => "Authentication Scheme using the OAuth Bearer Token Standard", "type" => "oauthbearertoken"),
-            array("name" => "HTTP Basic", "description" => "Authentication Scheme using the Http Basic Standard", "type" => "httpbasic")
-        );
+        $payload['authenticationSchemes'] = array();
+        if ($this->bearerAuth->isConfigured()) {
+            $payload['authenticationSchemes'][] = array("name" => "OAuth Bearer Token", "description" => "Authentication scheme using the OAuth Bearer Token standard", "type" => "oauthbearertoken");
+        }
+        $payload['authenticationSchemes'][] = array("name" => "HTTP Basic", "description" => "Authentication Scheme using the Http Basic Standard", "type" => "httpbasic");
         echo json_encode($payload);
     }
 

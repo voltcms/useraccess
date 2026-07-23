@@ -98,6 +98,14 @@ if ($path === '/auth/logout' && $method === 'POST') {
 // default). The demo UI authenticates via the /auth/login endpoint above and
 // then relies on the session cookie for these calls.
 $app = new SCIM($userProvider, $groupProvider);
+// Optional: enable OAuth Bearer-token auth (how IdPs like Okta / Entra ID
+// provision over SCIM) by exporting USERACCESS_SCIM_BEARER_TOKEN before starting
+// the server. When set, `Authorization: Bearer <token>` is accepted alongside
+// the session login. Use a long, random value and only over HTTPS in production.
+$bearerToken = getenv('USERACCESS_SCIM_BEARER_TOKEN');
+if ($bearerToken !== false && $bearerToken !== '') {
+    $app->setBearerTokens([$bearerToken]);
+}
 // In production, refuse plaintext HTTP and send HSTS (kept off here because the
 // local demo runs over http://localhost):
 //     $app->setHttpsPolicy(true);

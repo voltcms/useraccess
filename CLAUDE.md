@@ -27,6 +27,7 @@ src/                       # The library (PSR-4: VoltCMS\UserAccess\)
   SCIM.php                 # SCIM 2.0 REST router + request handlers (the main entry point)
   SessionAuth.php          # Singleton PHP-session login/logout, CSRF, group enforcement
   HeaderAuth.php           # Stateless HTTP Basic auth check
+  BearerAuth.php           # Stateless OAuth Bearer-token check (static provisioning tokens)
   Sanitizer.php            # String/array sanitization + validation regexes
   Lock.php                 # Process-wide reentrant advisory write mutex (flock) for FileDB
   LoginThrottle.php        # Shared-storage brute-force lockout (identifier + IP keyed)
@@ -124,8 +125,8 @@ analysis (PHPStan/Psalm) and a coding-standard check are not wired up yet. Alway
 - Payload validation lives in `parseUserPayload` / `parseGroupPayload` (schema presence,
   required `userName`/`displayName`, type-checking of optional SCIM fields, uniqueness).
 - `enforceAuthentication` (**default true — secure by default**) gates the whole router:
-  it requires a logged-in session user OR HTTP Basic credentials, and that the user
-  `isAdmin()`. It is the **third constructor argument**, so `new SCIM($userProvider,
+  it requires a logged-in **admin** session user, HTTP Basic credentials for an admin, OR
+  a valid Bearer token (`setBearerTokens()`). It is the **third constructor argument**, so `new SCIM($userProvider,
   $groupProvider)` is authenticated; a caller must explicitly opt out with
   `new SCIM($userProvider, $groupProvider, false)`. The demo opts out (its static UI has
   no login flow) with a loud DEMO-ONLY warning — never do that in production.
@@ -148,6 +149,13 @@ analysis (PHPStan/Psalm) and a coding-standard check are not wired up yet. Alway
 - **`HeaderAuth::checkBasicAuthentication()`** is stateless — decodes an `Authorization:
   Basic` header and verifies the password. Requires the web server to pass the
   Authorization header through (see `demo/api/.htaccess`).
+- **`BearerAuth`** is stateless OAuth Bearer-token auth for machine provisioning: configure
+  tokens via `SCIM::setBearerTokens([...])` (opt-in, additive to session + Basic). A valid
+  `Authorization: Bearer <token>` authorizes the request as the provisioning service with
+  full admin rights and **no per-user lookup** — matching how Okta/Entra provision over
+  SCIM. Tokens are stored only as SHA-256 hashes and compared with `hash_equals`; failed
+  Bearer attempts are deliberately **not** throttled (the secret is high-entropy, and
+  throttling would risk locking out a misconfigured-but-legitimate IdP).
 - **Brute-force lockout** is enforced by `LoginThrottle`, shared across requests and keyed
   by identifier + `REMOTE_ADDR` (not the session), so it applies to both the session and
   HTTP Basic paths and cannot be reset by dropping the cookie. Both auth paths call
@@ -285,8 +293,12 @@ Security / auth:
   when locked) and `HeaderAuth::checkBasicAuthentication`. Lockout = `maxLoginAttempts`
   failures within a 900s window, cleared on success. The `$_SESSION` counter is kept for
   backward-compatible login info but is no longer the security boundary.
-- [ ] **Bearer-token / OAuth auth** — real IdPs (Okta, Entra/Azure AD) provision over SCIM
-  with `Authorization: Bearer`. Only HTTP Basic + session are supported today.
+- [x] **Bearer-token / OAuth auth** — `BearerAuth` validates `Authorization: Bearer <token>`
+  against configured tokens (held as SHA-256 hashes, constant-time compared). Enable with
+  `SCIM::setBearerTokens([...])`; a valid token authorizes as the provisioning service
+  (admin) with no per-user lookup, alongside session + HTTP Basic. `ServiceProviderConfig`
+  advertises `oauthbearertoken` when configured. The demo reads
+  `USERACCESS_SCIM_BEARER_TOKEN`.
 - [x] **Enforce HTTPS / add HSTS** — `SCIM::setHttpsPolicy()` (opt-in) refuses plaintext
   HTTP with a SCIM 403 before auth runs, and sends `Strict-Transport-Security` over HTTPS.
   Off by default (the local demo is http://localhost; TLS topology is deployment-specific)
