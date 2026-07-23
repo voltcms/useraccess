@@ -31,6 +31,7 @@ src/                       # The library (PSR-4: VoltCMS\UserAccess\)
   Sanitizer.php            # String/array sanitization + validation regexes
   Lock.php                 # Process-wide reentrant advisory write mutex (flock) for FileDB
   LoginThrottle.php        # Shared-storage brute-force lockout (identifier + IP keyed)
+  AuditLog.php             # Append-only JSON-Lines audit log of admin mutations
   Utils.php                # Page-protection / content-visibility helpers + isHttps/protectDirectory
   RestApp.php              # Legacy/experimental router — ENTIRELY COMMENTED OUT, not used
 tests/                     # PHPUnit tests
@@ -137,6 +138,11 @@ analysis (PHPStan/Psalm) and a coding-standard check are not wired up yet. Alway
 - **Error messages are client-safe**: PATCH/PUT/create map domain codes to friendly text
   via `messageForException()`; handlers never echo raw `EXCEPTION_*` codes, and an uncaught
   fault becomes a generic SCIM 500 (see the exception/shutdown handler).
+- **Audit logging** (opt-in via `setAuditLogDirectory()`): each successful mutating handler
+  calls the private `writeAudit()`, which records actor/IP/action/target through `AuditLog`.
+  The actor + method are captured in `enforceAuthentication` (`session`/`basic`/`bearer`);
+  `deleteUser` reads the username before deleting so the entry is meaningful. Keep new
+  mutations audited by adding a `writeAudit(...)` call on their success path.
 
 ### Authentication
 - **`SessionAuth`** (singleton) manages PHP `$_SESSION` login state. Cookies are set
@@ -337,7 +343,11 @@ Operational:
 - [x] **CI** — `.github/workflows/ci.yml` runs `composer test` on PHP 8.4 and a `php -l`
   lint matrix on 8.2/8.3/8.4 on every push/PR. Still to add: PHPStan/Psalm and a
   coding-standard (PHP-CS-Fixer / PHPCS) check.
-- [ ] **Audit logging** of admin actions (who created/modified/deleted whom).
+- [x] **Audit logging** of admin actions — `AuditLog` appends one JSON-Lines entry per
+  successful create/update/patch/delete of a user or group, capturing actor (+ auth
+  method), client IP, action, target id/name, and outcome. Enable with
+  `SCIM::setAuditLogDirectory($dir)` (off by default; the demo logs to `../data/audit`).
+  The log dir gets the same deny-all `.htaccess` and should live outside the web root.
 - [ ] **Real README / deployment + hardening docs** — the current README is only an RFC
   excerpt.
 

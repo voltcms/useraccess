@@ -20,6 +20,9 @@ class SCIM
     private $requireHttps = false;
     private $hstsMaxAge = 0;
     private $hstsIncludeSubDomains = true;
+    private $auditLog;
+    private $auditActor = 'anonymous';
+    private $auditActorType = 'none';
 
     // $enforceAuthentication defaults to TRUE (secure by default): unless a
     // caller explicitly opts out, the router requires a logged-in admin
@@ -30,8 +33,24 @@ class SCIM
         $this->groupProvider = $groupProvider;
         $this->sessionAuth = SessionAuth::getInstance($this->userProvider, $this->groupProvider);
         $this->bearerAuth = new BearerAuth();
+        $this->auditLog = new AuditLog();
         $this->router = new Router();
         $this->enforceAuthentication = $enforceAuthentication;
+    }
+
+    // Enables audit logging of administrative actions (create/update/patch/
+    // delete of users and groups) to an append-only JSON-Lines file in
+    // $directory. Off by default. The directory holds usernames and actor IPs,
+    // so keep it outside the web root.
+    public function setAuditLogDirectory(string $directory): void
+    {
+        $this->auditLog = new AuditLog($directory);
+    }
+
+    // Injects a preconfigured AuditLog (custom sink or tests).
+    public function setAuditLog(AuditLog $auditLog): void
+    {
+        $this->auditLog = $auditLog;
     }
 
     // Configures OAuth 2.0 Bearer-token authentication. A request that presents
@@ -69,17 +88,23 @@ class SCIM
 
         if ($this->enforceAuthentication) {
             $this->loggedInUser = $this->sessionAuth->getLoggedInUser();
+            $method = 'session';
             if (!$this->loggedInUser) {
                 $this->loggedInUser = HeaderAuth::checkBasicAuthentication($this->userProvider);
+                $method = 'basic';
             }
             if ($this->loggedInUser) {
                 // Session or HTTP Basic identified a user: require admin rights.
                 if (!$this->loggedInUser->isAdmin()) {
                     $this->throwError(403, "Forbidden");
                 }
+                $this->auditActor = $this->loggedInUser->getUserName();
+                $this->auditActorType = $method;
             } elseif ($this->bearerAuth->authenticate()) {
                 // A valid Bearer token authorizes the request as the
                 // provisioning service (admin) without a per-user lookup.
+                $this->auditActor = 'bearer-token';
+                $this->auditActorType = 'bearer';
             } else {
                 $this->throwError(401, "Unauthorized");
             }
@@ -174,6 +199,7 @@ class SCIM
                     exit($this->throwError(500, "The user could not be created due to an internal error."));
             }
         }
+        $this->writeAudit('user.create', 'User', $user->getId(), $user->getUserName());
         $payload = $user->toSCIM();
         unset($payload['_modified']);
         header("Content-Type: application/json", true, 201);
@@ -312,6 +338,7 @@ class SCIM
             error_log('putUser failed: ' . $e->getMessage());
             exit($this->throwError($this->statusForException($e->getMessage()), $this->messageForException($e->getMessage())));
         }
+        $this->writeAudit('user.update', 'User', $user->getId(), $user->getUserName());
         $payload = $user->toSCIM();
         unset($payload['_modified']);
         header("Content-Type: application/json", true, 200);
@@ -347,6 +374,7 @@ class SCIM
             error_log('patchUser failed: ' . $e->getMessage());
             exit($this->throwError($this->statusForException($e->getMessage()), $this->messageForException($e->getMessage())));
         }
+        $this->writeAudit('user.patch', 'User', $user->getId(), $user->getUserName());
         $payload = $user->toSCIM();
         unset($payload['_modified']);
         header("Content-Type: application/json", true, 200);
@@ -358,7 +386,17 @@ class SCIM
         if (!$this->userProvider->exists('id', $userID)) {
             $this->throwError(404, "Selected user does not exist.");
         }
+        // Capture the username before deletion so the audit entry is meaningful.
+        $userName = null;
+        if ($this->auditLog->isEnabled()) {
+            try {
+                $userName = $this->userProvider->read('id', $userID)->getUserName();
+            } catch (Exception $e) {
+                // Best effort — proceed with the delete regardless.
+            }
+        }
         $this->userProvider->delete($userID);
+        $this->writeAudit('user.delete', 'User', $userID, $userName);
         header("Content-Type: application/json", true, 204);
     }
 
@@ -579,6 +617,7 @@ class SCIM
         }
         $group->fromSCIM($attributes);
         $group = $this->groupProvider->create($group);
+        $this->writeAudit('group.create', 'Group', $group->getId(), $group->getDisplayName());
         $payload = $group->toSCIM();
         unset($payload['_modified']);
         header("Content-Type: application/json", true, 201);
@@ -668,6 +707,7 @@ class SCIM
             error_log('patchGroup failed: ' . $e->getMessage());
             exit($this->throwError($this->statusForException($e->getMessage()), $this->messageForException($e->getMessage())));
         }
+        $this->writeAudit('group.patch', 'Group', $group->getId(), $group->getDisplayName());
         $payload = $group->toSCIM();
         unset($payload['_modified']);
         header("Content-Type: application/json", true, 200);
@@ -700,6 +740,7 @@ class SCIM
         }
         $group->fromSCIM($attributes);
         $group = $this->groupProvider->update($group);
+        $this->writeAudit('group.update', 'Group', $group->getId(), $group->getDisplayName());
         $payload = $group->toSCIM();
         unset($payload['_modified']);
         header("Content-Type: application/json", true, 200);
@@ -716,6 +757,7 @@ class SCIM
             $this->throwError(403, "Forbidden");
         }
         $this->groupProvider->delete($groupID);
+        $this->writeAudit('group.delete', 'Group', $groupID, $group->getDisplayName());
         header("Content-Type: application/json", true, 204);
     }
 
@@ -1092,6 +1134,26 @@ class SCIM
             }
             header($header);
         }
+    }
+
+    // Records a successful administrative mutation to the audit log (no-op when
+    // auditing is disabled). Captures the authenticated actor, its auth method,
+    // the client IP, and the affected resource.
+    private function writeAudit(string $action, string $targetType, ?string $targetId, ?string $target): void
+    {
+        if (!$this->auditLog->isEnabled()) {
+            return;
+        }
+        $this->auditLog->record(array(
+            'actor' => $this->auditActor,
+            'actorType' => $this->auditActorType,
+            'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
+            'action' => $action,
+            'targetType' => $targetType,
+            'targetId' => $targetId,
+            'target' => $target,
+            'outcome' => 'success',
+        ));
     }
 
     // Maps a domain/validation exception code to a client-safe message so PATCH

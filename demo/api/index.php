@@ -98,6 +98,10 @@ if ($path === '/auth/logout' && $method === 'POST') {
 // default). The demo UI authenticates via the /auth/login endpoint above and
 // then relies on the session cookie for these calls.
 $app = new SCIM($userProvider, $groupProvider);
+// Record admin actions (create/update/delete of users and groups) to an
+// append-only JSON-Lines audit log. Kept alongside the demo data (outside the
+// api/ web root); a deny-all .htaccess is dropped in automatically.
+$app->setAuditLogDirectory('../data/audit');
 // Optional: enable OAuth Bearer-token auth (how IdPs like Okta / Entra ID
 // provision over SCIM) by exporting USERACCESS_SCIM_BEARER_TOKEN before starting
 // the server. When set, `Authorization: Bearer <token>` is accepted alongside
