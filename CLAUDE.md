@@ -107,8 +107,10 @@ analysis (PHPStan/Psalm) and a coding-standard check are not wired up yet. Alway
 ### SCIM layer (`SCIM.php`)
 - `SCIM` is the primary integration point. Construct it with a user provider and a group
   provider, then call `runRouter()`. It uses **`bramus/router`** to map
-  `/scim/users`, `/scim/users/{uuid}`, `/scim/groups`, `/scim/groups/{uuid}`, and
-  `/scim/ServiceProviderConfigs` to handler methods.
+  `/scim/users`, `/scim/users/{uuid}`, `/scim/groups`, `/scim/groups/{uuid}`, the discovery
+  endpoints `/scim/ServiceProviderConfig[s]`, `/scim/ResourceTypes[/{id}]`,
+  `/scim/Schemas[/{urn}]`, and `/scim/Me` to handler methods. All responses use the
+  `application/scim+json` content type via `emitScim()`.
 - Supported verbs: **GET (list + single), POST (create), PUT (replace), PATCH, DELETE**.
   `patchUser` / `patchGroup` implement SCIM PatchOp (`op` = add / replace / remove).
   Users support attribute paths (`userName`, `displayName`, `name.familyName`/`givenName`,
@@ -353,6 +355,11 @@ Operational:
 
 SCIM completeness (interop):
 
-- [ ] **Discovery + missing endpoints** — `/Me`, `/Schemas`, `/ResourceTypes`; Bulk; sort;
-  richer filtering (only a single `attribute eq "value"` is supported).
-- [ ] **`application/scim+json`** request/response content types (RFC 7644).
+- [x] **Discovery + `/Me`** — `/scim/ResourceTypes` (+ `/{id}`), `/scim/Schemas` (+ `/{urn}`),
+  `/scim/ServiceProviderConfig` (singular alias of the legacy plural), and `/scim/Me`
+  (returns the session/Basic user; 404 for a Bearer service token). Handlers:
+  `showResourceTypes` / `showSchemas` / `showMe`.
+- [x] **`application/scim+json`** — all SCIM responses (and errors) now send the RFC 7644
+  content type via the shared `emitScim()` helper.
+- [ ] **Bulk, sort, richer filtering** — still unsupported and advertised as such in
+  `ServiceProviderConfig`; filtering handles a single `attribute eq "value"` expression.
