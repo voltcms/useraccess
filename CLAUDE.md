@@ -200,6 +200,454 @@ Match the existing code — it is deliberately plain, framework-light PHP:
   block) are historical scaffolding. **Do not treat them as active**; don't delete them
   wholesale either unless the task is a cleanup — they document intent.
 
+The rule-by-rule baseline (with the counts behind each call) is in **Coding standards**
+below; that section wins where the two overlap.
+
+## Coding standards
+
+A survey-derived baseline for this repo. Every rule below was checked against the actual
+sources, and each cites what the codebase does today.
+
+**How to read this.** Each rule states the convention that **dominates by volume** and the
+one that is **better on merit**. Where they agree, the rule is just "keep doing this."
+Where they differ the rule is marked **⚠ split** — in those cases *write new code the
+better way and leave existing code alone*; none of these are worth a reformatting sweep,
+and `phpcs.xml.dist` is deliberately narrow for exactly that reason. Counts exclude
+`src/RestApp.php` (dead, fully commented, PHPStan-excluded) unless stated.
+
+### PHP — syntax and formatting
+
+**Lowercase `const`.** Dominant (20 of 24) and better. `CONST` survives only in `User.php`.
+
+```php
+const SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:User';   // good
+CONST SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:User';   // bad — User.php:11
+```
+
+**Declare constant visibility.** ⚠ split: bare `const` dominates (21 of 24); explicit
+visibility (`Sanitizer`, `HeaderAuth`) is better — it says whether the constant is API or
+an implementation detail. New constants get a modifier.
+
+```php
+private const DUMMY_PASSWORD_HASH = '$2y$12$...';   // good — HeaderAuth.php:13
+const MAX_FILTER_RESULTS = 200;                     // bad  — SCIM.php:11 (is this API?)
+```
+
+**No leading backslash in `use` statements.** ⚠ split: 40 of 48 imports carry a leading
+`\`; the no-backslash form is better (a `use` path is always absolute, so the `\` is
+noise) and is what the newest files already do — `SCIMTest.php` (all 7) and
+`demo/api/index.php:5`.
+
+```php
+use VoltCMS\UserAccess\User;    // good
+use \VoltCMS\UserAccess\User;   // bad
+```
+
+**Don't fully-qualify global function calls.** Dominant — two exceptions in the whole tree —
+and better; the `\` prefix reads as a namespace hint that means nothing here.
+
+```php
+return password_hash($password, PASSWORD_DEFAULT);    // good
+return \password_hash($password, PASSWORD_DEFAULT);   // bad — User.php:145, :162
+```
+
+**Short array syntax `[]`.** ⚠ split: `array()` has 100 uses in `src/` but **86 of them are
+inside `SCIM.php`** — every other file, and the whole test suite, is already `[]`. `[]` is
+better and is the majority once `SCIM.php` is set aside. New code uses `[]`, including new
+handlers in `SCIM.php`.
+
+```php
+$payload['patch'] = ['supported' => true];             // good
+$payload['patch'] = array("supported" => true);        // bad — SCIM.php:810
+```
+
+**Strict comparison `===` / `!==`.** Narrowly dominant (50 `===` vs 31 `==`) and better.
+Loose comparison is actively wrong in places: `$payload[$schema] == ""` (SCIM.php:447)
+is true for `0`, `null`, and `[]`.
+
+```php
+if ($attribute === 'id') { ... }   // good
+if ($attribute == 'id') { ... }    // bad — UserProvider.php:42
+```
+
+**`elseif`, not `else if`.** Dominant (14 vs 4) and better.
+
+```php
+} elseif ($groupProvider->exists('id', $group)) {     // good — SCIM.php uses this
+} else if ($groupProvider->exists('id', $group)) {    // bad  — User.php:171
+```
+
+**Opening brace on its own line for function declarations.** Dominant (all but two) and
+better here because it is what 167 of 169 methods do.
+
+```php
+public function fromSCIM(array $attributes): void
+{                                                  // good
+public function fromSCIM(array $attributes) {      // bad — User.php:308, GroupProvider.php:134
+```
+
+**Single-quoted strings unless interpolating.** Dominant (1058 vs 299) and better. The
+biggest offender is header emission — `header("...")` 21× vs `header('...')` 6×.
+
+```php
+header('Content-Type: application/scim+json', true, 200);   // good
+header("Content-Type: application/scim+json", true, 200);   // bad — SCIM.php:228 et al
+$this->throwError(404, 'Not Found');                        // good
+$this->throwError(404, "Not Found");                        // bad — SCIM.php:86
+```
+
+**No blank line after a class's opening brace.** ⚠ split: 11 of 15 classes have one; the
+four newest (`AuditLog`, `BearerAuth`, `Lock`, `LoginThrottle`) do not, and that is better
+(PSR-12 forbids it). New classes: no blank line.
+
+```php
+class BearerAuth
+{
+    private $tokenHashes = [];      // good — BearerAuth.php:22
+}
+
+class Group
+{
+
+    const RESOURCE_TYPE = 'Group';  // bad — Group.php:9-10
+}
+```
+
+**Empty singleton bodies stay as `{}` on the following line.** Uniform across all three
+singletons — keep it if you add a fourth.
+
+```php
+private function __construct()
+{}                                  // good — UserProvider.php:29-30
+```
+
+### PHP — types and signatures
+
+**Declare return types on every new method.** Narrowly dominant (97 of 169 typed) and
+better. The untyped 72 are concentrated in the entity setters and every public `SCIM`
+handler; add `: void` to the former and a real type to the latter as you touch them.
+
+```php
+public function setDisplayName(string $displayName): void   // good
+public function setDisplayName(string $displayName)         // bad — User.php:73
+```
+
+**Declare parameter types.** Split by layer, not by count: entities and providers are fully
+typed, `SCIM` handlers and `Utils` are almost entirely untyped. Typed is better. Use
+`mixed` for genuinely polymorphic SCIM values rather than omitting the type.
+
+```php
+private function extractMemberIds(mixed $value): array   // good
+private function extractMemberIds($value): array         // bad — SCIM.php:1213
+public function listUsers(array $options): void          // good
+public function listUsers($options)                      // bad — SCIM.php:326
+```
+
+**Declare property types.** ⚠ split, and the starkest one: **1 of 51** properties is typed
+(`Lock::$depth`). Typed is better, and `SessionAuth.php:22-23` carries commented-out typed
+declarations showing the intent. Type new properties; `SCIM`'s 13 untyped fields are the
+best place to start when one is touched anyway.
+
+```php
+private static int $depth = 0;   // good — Lock.php:24
+private ?User $loggedInUser = null;  // good
+private $loggedInUser;               // bad — SCIM.php:19
+```
+
+**Scalar type names are lowercase.** Two stragglers, both in the provider interfaces. PHP
+accepts `String` (type names are case-insensitive) so this is silent, not broken.
+
+```php
+public function read(string $attribute, string $value): User;   // good
+public function read(String $attribute, string $value): User;   // bad — both *ProviderInterface.php:14
+```
+
+**No `declare(strict_types=1)`.** Uniform (zero files) — and adding it to one file only
+would change coercion behavior asymmetrically across the call graph. Leave it off unless
+the whole tree flips at once.
+
+### PHP — error handling
+
+**Two layers, two mechanisms — don't mix them.** Domain code (entities, providers) throws
+`\Exception` with a stable `EXCEPTION_*` string as the *message*; HTTP code (`SCIM`)
+converts to a SCIM error body via `throwError()`. A provider must never emit HTTP; a
+handler must never let an `EXCEPTION_*` code reach the client.
+
+```php
+throw new Exception('EXCEPTION_DUPLICATE_EMAIL');            // good — in a provider
+exit($this->throwError(400, $e->getMessage()));              // bad  — leaks the code
+exit($this->throwError(400, $this->messageForException($e->getMessage())));  // good
+```
+
+**Call `throwError()` bare — it already exits.** ⚠ split: 78 of 90 call sites wrap it as
+`exit($this->throwError(...))`, but `throwError()` ends in `exit(json_encode(...))`, so the
+wrapper is unreachable and misleads readers into thinking it returns a value. Bare is
+better and is what the 12 newer call sites do.
+
+```php
+$this->throwError(404, 'Selected user does not exist.');          // good — SCIM.php:235
+exit($this->throwError(404, 'Selected user does not exist.'));    // bad  — SCIM.php:374
+```
+
+**Every new `EXCEPTION_*` code needs a `messageForException()` arm.** Otherwise it falls
+through to the generic "The request could not be completed." and the client learns nothing.
+Add a `statusForException()` arm too when the code isn't a 400.
+
+**Wrap entity + provider calls in a handler's try/catch.** Inconsistent today: `createUser`,
+`putUser`, `patchUser`, `patchGroup` map domain exceptions to 4xx; `createGroup` (SCIM.php:641)
+and `putGroup` (SCIM.php:764) don't, so a duplicate display name there escapes to the global
+handler as a **500 instead of a 409**. Mapping is both the majority (4 of 6) and correct.
+
+```php
+try {                                            // good — createUser/putUser/patch*
+    $group->fromSCIM($attributes);
+    $group = $this->groupProvider->create($group);
+} catch (Exception $e) {
+    error_log('createGroup failed: ' . $e->getMessage());
+    exit($this->throwError($this->statusForException($e->getMessage()),
+        $this->messageForException($e->getMessage())));
+}
+
+$group->fromSCIM($attributes);                   // bad — SCIM.php:641-642, unguarded
+$group = $this->groupProvider->create($group);
+```
+
+**Emit SCIM bodies through `emitScim()`.** ⚠ split: 11 inline `header(...) + echo
+preg_replace(...)` sites vs 6 `emitScim()` calls. The helper is better — it is the single
+place the `application/scim+json` type and the control-character strip are guaranteed to
+travel together.
+
+```php
+$this->emitScim($payload, 201);                             // good — SCIM.php:966
+header("Content-Type: application/scim+json", true, 201);   // bad  — SCIM.php:228-229
+echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
+```
+
+### PHP — naming
+
+**camelCase for variables and parameters.** Dominant (38 snake_case occurrences, 11 distinct
+names, all confined to `Utils.php` and `SessionAuth.php`) and better. **Do not rename the
+existing ones without checking callers** — they are public parameter names, so a rename
+breaks any host that uses named arguments (see open question 2).
+
+```php
+public static function protectPage($sessionAuth, $userStatus, $loggedInMemberOfGroup, ...)    // good
+public static function protectPage($sessionAuth, $user_status, $logged_in_member_of_group, ...) // bad — Utils.php:39
+```
+
+**Method names are camelCase, and call them with the casing they were declared.** PHP method
+names are case-insensitive so the mismatch is silent, which is exactly why it survives.
+
+```php
+$sessionAuth->logout();   // good — matches SessionAuth.php:251
+$sessionAuth->logOut();   // bad  — UserProviderTest.php:168, :181
+```
+
+**Leading-underscore fields mean "storage-managed metadata", nothing else.** `$_id`,
+`$_created`, `$_modified` mirror FileDB's document keys. Don't use `_` as a "private"
+marker on ordinary fields; `private` already says that.
+
+```php
+private $_modified = '';    // good — FileDB metadata (User.php:19)
+private $_userName = '';    // bad  — ordinary field, no underscore
+```
+
+**Return booleans directly.** Minor but repeated (`SessionAuth.php:280-284`,
+`Utils.php:109-113`).
+
+```php
+return $loggedInUser && $loggedInUser->isMemberOf($group);   // good
+if (...) { return true; } else { return false; }             // bad
+```
+
+### PHP — comments and docblocks
+
+**Line comments (`//`) above the declaration for rationale.** Dominant and uniform: the
+`src/` tree contains **zero** `/** */` docblocks. The existing comments are unusually good —
+they explain *why* (`BearerAuth`'s throttling rationale, `Lock`'s reentrancy note,
+`Utils::isHttps`'s proxy caveat). Keep writing those.
+
+**⚠ split: add `/** */` on public API where types are ambiguous.** Volume says "never use
+docblocks"; merit says a Packagist-published library should annotate `array` shapes so
+PHPStan can be raised past level 2 and IDEs can autocomplete. The compromise: keep `//` for
+rationale, add a docblock **only** when a signature's `array` hides a shape.
+
+```php
+/** @param array<int, array{value: string}>|string $value */   // good — worth stating
+private function extractMemberIds($value): array
+
+/** Sets the display name. */                                  // bad — restates the signature
+public function setDisplayName(string $displayName): void
+```
+
+**Never add new commented-out code.** The existing blocks (`RestApp.php`, the ~80 dead lines
+in `getUser`, ~40 in `getGroup`) are grandfathered scaffolding. Git history is the archive.
+
+### Tests
+
+**One `testXxx` method per behavior, named after the behavior.** Dominant (38 named methods
+across 5 files) and better. Two files use a catch-all `test()` — `UserTest.php:9` and
+`UserProviderTest.php:13`, the latter ~175 lines covering providers, groups, passwords, and
+`SessionAuth` in one method, so a single failure hides everything after it.
+
+```php
+public function testDeletingUserRemovesGroupMembership()   // good — MembershipTest.php:12
+public function test()                                     // bad  — UserProviderTest.php:13
+```
+
+**`assertSame` for scalars, `assertEquals` only when loose comparison is the point.** ⚠ split:
+`assertEquals` dominates (29 vs 13); `assertSame` is better because `assertEquals` will not
+catch a `'1'` where `1` is expected.
+
+```php
+$this->assertSame('userid1', $user->getUserName());     // good
+$this->assertEquals('userid1', $user->getUserName());   // acceptable but weaker
+```
+
+**Expected value first.** PHPUnit's signature is `(expected, actual)`; 11 of the 25 live
+`assertEquals` calls in `UserProviderTest` are reversed, which inverts every failure message.
+
+```php
+$this->assertSame(3, $_SESSION[SessionAuth::UA_ATTEMPTS]);       // good
+$this->assertEquals($_SESSION[SessionAuth::UA_ATTEMPTS], 3);     // bad — UserProviderTest.php:154
+```
+
+**Pick the test kind by what you're testing.** Both styles are correct and intentional:
+persistence/membership semantics → integration test against real FileDB in `tests/data/*`,
+opening *and* closing with `deleteAll()` (`UserProviderTest`, `MembershipTest`); SCIM handler
+behavior → `createMock`/`createStub` providers plus output assertions (`SCIMTest`,
+`HeaderAuthTest`, `BearerAuthTest`). Never reach for a real provider to test a handler.
+
+**Restore global state in `tearDown()`.** Handlers and auth read `$_SERVER`/`$_SESSION` and
+`SCIM`'s constructor initializes the `SessionAuth` singleton; without cleanup the mocks leak
+into later tests. `SCIMTest.php:25-33` and `BearerAuthTest.php:9-12` show both shapes.
+
+**camelCase locals in tests too.** `$user_test1` / `$user_test2` (`UserProviderTest`) are the
+only snake_case locals in the suite.
+
+### Demo JavaScript (`demo/ui/js/useraccess.js`)
+
+**`demo/ui/js/color-modes.js` is vendored** from the Bootstrap docs (see its copyright
+header) — 2-space indent, no semicolons, single quotes. Don't restyle it and don't read
+style cues from it. Everything below applies to `useraccess.js`, which is 4-space, double-
+quoted, semicolon-terminated.
+
+**Real class methods, not fields assigned function expressions.** ⚠ split: 17 fields vs 1
+real method (`init()`). Methods are better — they live on the prototype, and the current
+form only works because every call goes through `this.x()`.
+
+```js
+async loadUsers() { ... }                    // good — matches init()
+loadUsers = async function () { ... }        // bad — 17 sites
+```
+
+**`async`/`await` with `try`/`catch`, not `.then()` chains.** ⚠ split: 25 `.then()` vs 4
+`await`. Nearly every method is declared `async` yet never awaits and returns nothing, so
+callers cannot await them and failures vanish into `.catch(console.error)`. `login()`
+(line 62) already shows the better shape — copy it.
+
+```js
+async loadUsers() {                                       // good
+    try {
+        const response = await fetch("../api/scim/users");
+        if (response.status === 401) { this.showLogin(); return; }
+        const data = await response.json();
+        ...
+    } catch (error) {
+        console.error("Error loading users:", error);
+    }
+}
+
+loadUsers = async function () {                           // bad — lines 181-276
+    fetch("../api/scim/users").then(r => r.json()).then(data => { ... }).catch(...);
+}
+```
+
+**`const`/`let`, never `var` — and never redeclare a name with a new type.** Dominant
+(24 `const`, 0 `let`, 8 `var`) and better. All 8 `var`s are the same bug shape: `var data =
+{...}` followed by `var data = JSON.stringify(data)` in the same scope, silently turning an
+object into a string.
+
+```js
+const payload = { schemas: [...], userName: formData.get("userName") };   // good
+const body = JSON.stringify(payload);
+
+var data = { ... };                        // bad — lines 444/465, 491/516, 567/582, 608/623
+var data = JSON.stringify(data);
+```
+
+**`===` / `!==`.** ⚠ split: 12 loose vs 2 strict; strict is better. `response.status == 204`
+and `data.Resources.length == 0` are the common cases.
+
+```js
+if (response.status === 204) { ... }   // good
+if (response.status == 204) { ... }    // bad — lines 550, 657
+```
+
+**No `? true : false`.** Four sites (lines 398, 432, 452, 498).
+
+```js
+active: formData.get("active") === "on",                    // good
+"active": formData.get("active") == "on" ? true : false,    // bad
+```
+
+**Use the cached element fields the class already defines.** `loadUser()` (lines 158-179)
+calls `document.getElementById("updateUserForm")` six times although `this.updateUserForm`
+is a field.
+
+```js
+this.updateUserForm.querySelector("[name=\"id\"]").value = data.id;                    // good
+document.getElementById("updateUserForm").querySelector("[name=\"id\"]").value = ...;  // bad
+```
+
+### Files, layout and hygiene
+
+**One class per file, filename identical to the class, PSR-4 under `src/`.** Uniform — no
+exceptions. Test classes are `tests/<Class>Test.php` in the **global** namespace (also
+uniform, though see open question 8).
+
+**Files end with exactly one newline; no trailing whitespace; LF; 4-space indent; no tabs.**
+This is what `phpcs.xml.dist` enforces — but **only over `src/`**, which is why the three
+violations all sit outside it: `tests/SCIMTest.php` and both JS files lack a final newline,
+and `tests/UserProviderTest.php:27` has trailing whitespace.
+
+**Before finishing, run the checks that exist.** `composer test`, `composer phpstan`
+(level 2 over `src/`), `composer phpcs` — all three run in CI on every push.
+
+### Open questions
+
+Genuinely unresolved from reading the repo alone; these need a maintainer's call rather than
+a guess.
+
+1. **How far should the phpcs ruleset go?** `phpcs.xml.dist` says it is narrow on purpose,
+   "without imposing a wholesale reformat." Several rules above (`[]` over `array()`, no
+   leading `\` in imports, no blank line after the class brace) are mechanically checkable
+   and auto-fixable by `phpcbf` — but turning them on means one large diff. Adopt them as
+   enforced sniffs, or leave them as review-time guidance?
+2. **Are the snake_case public parameter names part of a host contract?** `Utils::protectPage`
+   and `Utils::isContentVisible` are page-protection helpers for VoltCMS. If the host calls
+   them with named arguments (`protectPage(user_status: ...)`), renaming is a breaking change.
+   I could not determine this from this repository.
+3. **Is the duplication of `setHeader()` deliberate?** `Utils::setHeader()` (public, static)
+   and `SessionAuth::setHeader()` (private, instance) have identical bodies. Keeping
+   `SessionAuth` self-contained is a defensible reason; if it isn't the reason, one should go.
+4. **Is `$_id` / `$_created` / `$_modified` an on-disk contract?** They look like FileDB's
+   metadata keys, which would mean the PHP property names are free to change but the array
+   keys in `getAttributes()`/`setAttributes()` are not. I could not verify FileDB's contract
+   (dependencies are not installable in this environment).
+5. **Which PHP version governs style choices?** `composer.json` requires `>=8.2` and the lint
+   matrix covers 8.2/8.3/8.4, so 8.2 is the floor — but is constructor property promotion /
+   `readonly` welcome at all, given the codebase's deliberate explicit-getter/setter style?
+   The two conventions pull in opposite directions for new entity classes.
+6. **Does `demo/` count as shipped code?** phpcs and PHPStan skip it; `php -l` covers it. It
+   uses `array()` throughout and seeds a hardcoded password. Exempt example code, or held to
+   the same bar minus the credential?
+7. **Is PHPStan meant to rise above level 2?** Several rules above (property types, parameter
+   types, array-shape docblocks) are worth much more if the level is going up and mostly
+   cosmetic if it is not.
+8. **Should tests be namespaced?** They are global-namespace classes with no `autoload-dev`
+   entry, found by directory. Uniform, and it works — deliberate simplicity, or drift?
+
 ## Testing conventions
 
 - PHPUnit 10; tests live in `tests/` and are picked up by the `Unit Tests` suite in
