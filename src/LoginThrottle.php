@@ -15,9 +15,9 @@ namespace VoltCMS\UserAccess;
 // window elapses since the last failure; a successful login clears the record.
 class LoginThrottle
 {
-    private $directory;
-    private $maxAttempts;
-    private $window;
+    private string $directory;
+    private int $maxAttempts;
+    private int $window;
 
     public function __construct(?string $directory = null, int $maxAttempts = 10, int $window = 900)
     {

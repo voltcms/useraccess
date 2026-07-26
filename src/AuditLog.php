@@ -14,7 +14,7 @@ namespace VoltCMS\UserAccess;
 // outside the web root.
 class AuditLog
 {
-    private $file = null;
+    private ?string $file = null;
 
     public function __construct(?string $directory = null, string $filename = 'audit.log')
     {
@@ -48,7 +48,7 @@ class AuditLog
             return;
         }
         if (!array_key_exists('time', $entry)) {
-            $entry = array_merge(array('time' => gmdate('c')), $entry);
+            $entry = array_merge(['time' => gmdate('c')], $entry);
         }
         $line = json_encode($entry, JSON_UNESCAPED_SLASHES);
         if ($line === false) {

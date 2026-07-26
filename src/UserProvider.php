@@ -2,16 +2,15 @@
 
 namespace VoltCMS\UserAccess;
 
-use \Exception;
-use \VoltCMS\FileDB\FileDB;
+use Exception;
+use VoltCMS\FileDB\FileDB;
 
 class UserProvider implements UserProviderInterface
 {
+    private static ?self $instance = null;
+    private static FileDB $db;
 
-    private static $instance = null;
-    private static $db;
-
-    public static function getInstance(?array $config = null)
+    public static function getInstance(?array $config = null): self
     {
         if (self::$instance === null) {
             if (empty($config) || empty($config['directory'])) {
@@ -29,17 +28,17 @@ class UserProvider implements UserProviderInterface
     private function __construct()
     {}
 
-    private function __clone()
+    private function __clone(): void
     {}
 
-    public function __wakeup()
+    public function __wakeup(): void
     {
-        throw new Exception("Cannot unserialize Object");
+        throw new Exception('Cannot unserialize Object');
     }
 
     public function exists(string $attribute, string $value): bool
     {
-        if ($attribute == 'id') {
+        if ($attribute === 'id') {
             $id = trim(strtolower($value));
             return !empty(self::$db->read($id));
         } else {
@@ -50,7 +49,7 @@ class UserProvider implements UserProviderInterface
     public function read(string $attribute, string $value): User
     {
         $value = trim($value);
-        if ($attribute == 'id') {
+        if ($attribute === 'id') {
             $id = strtolower($value);
             $result = self::$db->read($id);
             if (!empty($result)) {
@@ -60,7 +59,7 @@ class UserProvider implements UserProviderInterface
             }
         } else {
             $result = $this->find($attribute, $value);
-            if (count($result) == 1) {
+            if (count($result) === 1) {
                 return $result[0];
             } else {
                 throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
@@ -73,7 +72,7 @@ class UserProvider implements UserProviderInterface
         return Lock::exclusive(function () use ($user) {
             if ($this->exists('userName', $user->getUserName())) {
                 throw new Exception('EXCEPTION_USER_ALREADY_EXIST');
-            } else if (!empty($user->getEmail()) && !empty($this->find('email', $user->getEmail()))) {
+            } elseif (!empty($user->getEmail()) && !empty($this->find('email', $user->getEmail()))) {
                 throw new Exception('EXCEPTION_DUPLICATE_EMAIL');
             } else {
                 $id = self::$db->create($user->getAttributes());
@@ -104,7 +103,7 @@ class UserProvider implements UserProviderInterface
             if ($this->exists('id', $user->getId())) {
                 if (!empty($user->getEmail())) {
                     $items = $this->find('email', $user->getEmail());
-                    if (!empty($items) && $items[0]->getId() != $user->getId()) {
+                    if (!empty($items) && $items[0]->getId() !== $user->getId()) {
                         throw new Exception('EXCEPTION_DUPLICATE_EMAIL');
                     }
                 }
@@ -116,7 +115,7 @@ class UserProvider implements UserProviderInterface
         });
     }
 
-    public function delete(string $id)
+    public function delete(string $id): void
     {
         $id = trim(strtolower($id));
         // The whole delete-then-strip-from-groups sequence runs under one
@@ -140,7 +139,7 @@ class UserProvider implements UserProviderInterface
         });
     }
 
-    public function deleteAll()
+    public function deleteAll(): void
     {
         Lock::exclusive(function () {
             self::$db->deleteAll();

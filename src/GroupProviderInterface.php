@@ -4,14 +4,13 @@ namespace VoltCMS\UserAccess;
 
 interface GroupProviderInterface
 {
-
     public static function getInstance(?array $config = null);
 
     public function exists(string $attribute, string $value): bool;
 
     public function create(Group $group): Group;
 
-    public function read(String $attribute, string $value): Group;
+    public function read(string $attribute, string $value): Group;
 
     public function readAll(): array;
 

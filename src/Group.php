@@ -2,19 +2,21 @@
 
 namespace VoltCMS\UserAccess;
 
-use \Exception;
+use Exception;
 
 class Group
 {
-
-    const RESOURCE_TYPE = 'Group';
-    const SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:Group';
-    private $_id = '';
+    public const RESOURCE_TYPE = 'Group';
+    public const SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:Group';
+    private string $_id = '';
+    // $_created / $_modified stay untyped: FileDB stores them as integer
+    // timestamps but the entity initializes them to '', and a string type would
+    // silently coerce the timestamps written back in getAttributes().
     private $_created = '';
     private $_modified = '';
-    private $schemas = [self::SCHEMA];
-    private $displayName = '';
-    private $members = [];
+    private array $schemas = [self::SCHEMA];
+    private string $displayName = '';
+    private array $members = [];
 
     //////////////////////////////////////////////////
 
@@ -28,7 +30,7 @@ class Group
         return $this->displayName;
     }
 
-    public function setDisplayName(string $displayName)
+    public function setDisplayName(string $displayName): void
     {
         $this->displayName = trim($displayName);
     }
@@ -38,7 +40,7 @@ class Group
         return $this->members;
     }
 
-    public function addMembers(array $members)
+    public function addMembers(array $members): void
     {
         $members = Sanitizer::sanitizeArray($members);
         foreach ($members as $member) {
@@ -46,7 +48,7 @@ class Group
         }
     }
 
-    public function setMembers(array $members)
+    public function setMembers(array $members): void
     {
         $this->members = [];
         $this->addMembers($members);
@@ -57,9 +59,9 @@ class Group
         return in_array(Sanitizer::sanitizeString($member), $this->members);
     }
 
-    public function addMember(string $member)
+    public function addMember(string $member): void
     {
-        if ($member == '') {
+        if ($member === '') {
             throw new Exception('EXCEPTION_EMPTY_ID');
         }
         $userProvider = UserProvider::getInstance();
@@ -70,7 +72,7 @@ class Group
         }
     }
 
-    public function removeMember(string $member)
+    public function removeMember(string $member): void
     {
         if (($key = array_search($member, $this->members)) !== false) {
             unset($this->members[$key]);
@@ -113,7 +115,7 @@ class Group
             'created' => date(DATE_ATOM, $result['_created']),
             'lastModified' => date(DATE_ATOM, $result['_modified']),
             'version' => $etag,
-            'location' => (Utils::isHttps() ? "https" : "http") . "://$_SERVER[HTTP_HOST]" . str_replace("index.php", "", $_SERVER['SCRIPT_NAME']) . "scim/groups/" . $result['id']
+            'location' => (Utils::isHttps() ? 'https' : 'http') . "://$_SERVER[HTTP_HOST]" . str_replace('index.php', '', $_SERVER['SCRIPT_NAME']) . 'scim/groups/' . $result['id']
         ];
         if ($includeEtagLastModified) {
             $result['etagLastModified'] = $result['_modified'];
@@ -124,7 +126,7 @@ class Group
         return $result;
     }
 
-    public function setAttributes(array $attributes)
+    public function setAttributes(array $attributes): void
     {
         if (array_key_exists('schemas', $attributes)) {
             $this->schemas = $attributes['schemas'];
@@ -158,7 +160,7 @@ class Group
         }
     }
 
-    public function fromSCIM(array $attributes)
+    public function fromSCIM(array $attributes): void
     {
         $this->setAttributes($attributes);
     }

@@ -39,7 +39,7 @@ class Lock
     // result. If the lock cannot be obtained (e.g. the temp dir is not
     // writable) the callback still runs — locking is best-effort and must
     // never prevent the application from functioning.
-    public static function exclusive(callable $callback)
+    public static function exclusive(callable $callback): mixed
     {
         $handle = self::handle();
         $acquired = false;

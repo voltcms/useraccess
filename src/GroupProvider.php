@@ -2,16 +2,15 @@
 
 namespace VoltCMS\UserAccess;
 
-use \Exception;
-use \VoltCMS\FileDB\FileDB;
+use Exception;
+use VoltCMS\FileDB\FileDB;
 
 class GroupProvider implements GroupProviderInterface
 {
+    private static ?self $instance = null;
+    private static FileDB $db;
 
-    private static $instance = null;
-    private static $db;
-
-    public static function getInstance(?array $config = null)
+    public static function getInstance(?array $config = null): self
     {
         if (self::$instance === null) {
             if (empty($config) || empty($config['directory'])) {
@@ -30,17 +29,17 @@ class GroupProvider implements GroupProviderInterface
     private function __construct()
     {}
 
-    private function __clone()
+    private function __clone(): void
     {}
 
-    public function __wakeup()
+    public function __wakeup(): void
     {
-        throw new Exception("Cannot unserialize Object");
+        throw new Exception('Cannot unserialize Object');
     }
 
     public function exists(string $attribute, string $value): bool
     {
-        if ($attribute == 'id') {
+        if ($attribute === 'id') {
             $id = trim(strtolower($value));
             return !empty(self::$db->read($id));
         } else {
@@ -50,7 +49,7 @@ class GroupProvider implements GroupProviderInterface
 
     public function read(string $attribute, string $value): Group
     {
-        if ($attribute == 'id') {
+        if ($attribute === 'id') {
             $id = trim(strtolower($value));
             if ($this->exists($attribute, $id)) {
                 return $this->documentToEntry(self::$db->read($id)[0]);
@@ -60,7 +59,7 @@ class GroupProvider implements GroupProviderInterface
         } else {
             if ($this->exists($attribute, $value)) {
                 $result = $this->find($attribute, $value);
-                if (count($result) == 1) {
+                if (count($result) === 1) {
                     return $result[0];
                 } else {
                     throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
@@ -111,7 +110,7 @@ class GroupProvider implements GroupProviderInterface
         });
     }
 
-    public function delete(string $id)
+    public function delete(string $id): void
     {
         $id = trim(strtolower($id));
         Lock::exclusive(function () use ($id) {
@@ -123,7 +122,7 @@ class GroupProvider implements GroupProviderInterface
         });
     }
 
-    public function deleteAll()
+    public function deleteAll(): void
     {
         Lock::exclusive(function () {
             self::$db->deleteAll();
@@ -131,7 +130,8 @@ class GroupProvider implements GroupProviderInterface
         });
     }
 
-    private function createAdminGroup() {
+    private function createAdminGroup(): void
+    {
         if (!self::$instance->exists('displayName', 'Administrators')) {
             $administrators = new Group();
             $administrators->setDisplayName('Administrators');

@@ -2,31 +2,33 @@
 
 namespace VoltCMS\UserAccess;
 
-use \Exception;
+use Exception;
 
 class User
 {
-
-    CONST RESOURCE_TYPE = 'User';
-    CONST SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:User';
+    public const RESOURCE_TYPE = 'User';
+    public const SCHEMA = 'urn:ietf:params:scim:schemas:core:2.0:User';
     // Password policy. 8 is the minimum length; 72 is the byte limit of bcrypt
     // (PASSWORD_DEFAULT) — anything longer is silently truncated by the hash, so
     // it is rejected rather than accepted with a misleading tail.
-    CONST PASSWORD_MIN_LENGTH = 8;
-    CONST PASSWORD_MAX_LENGTH = 72;
-    private $_id = '';
+    public const PASSWORD_MIN_LENGTH = 8;
+    public const PASSWORD_MAX_LENGTH = 72;
+    private string $_id = '';
+    // $_created / $_modified stay untyped: FileDB stores them as integer
+    // timestamps but the entity initializes them to '', and a string type would
+    // silently coerce the timestamps written back in getAttributes().
     private $_created = '';
     private $_modified = '';
-    private $schemas = [self::SCHEMA];
-    private $userName = '';
-    private $displayName = '';
-    private $familyName = '';
-    private $givenName = '';
-    private $email = '';
-    private $active = true;
-    private $passwordHash = '';
-    private $loginAttempts = 0;
-    private $admin = false;
+    private array $schemas = [self::SCHEMA];
+    private string $userName = '';
+    private string $displayName = '';
+    private string $familyName = '';
+    private string $givenName = '';
+    private string $email = '';
+    private bool $active = true;
+    private string $passwordHash = '';
+    private int $loginAttempts = 0;
+    private bool $admin = false;
 
     // "emails": [
     //     {
@@ -57,7 +59,7 @@ class User
         return $this->userName;
     }
 
-    public function setUserName(string $userName)
+    public function setUserName(string $userName): void
     {
         if (!preg_match(Sanitizer::REGEX_NAME, $userName)) {
             throw new Exception('EXCEPTION_INVALID_USER_NAME');
@@ -70,7 +72,7 @@ class User
         return $this->displayName;
     }
 
-    public function setDisplayName(string $displayName)
+    public function setDisplayName(string $displayName): void
     {
         $this->displayName = trim($displayName);
     }
@@ -80,7 +82,7 @@ class User
         return $this->familyName;
     }
 
-    public function setFamilyName(string $familyName)
+    public function setFamilyName(string $familyName): void
     {
         $this->familyName = trim($familyName);
     }
@@ -90,7 +92,7 @@ class User
         return $this->givenName;
     }
 
-    public function setGivenName(string $givenName)
+    public function setGivenName(string $givenName): void
     {
         $this->givenName = trim($givenName);
     }
@@ -100,7 +102,7 @@ class User
         return $this->email;
     }
 
-    public function setEmail(string $email)
+    public function setEmail(string $email): void
     {
         $email = trim(strtolower($email));
         if (!empty($email) && !filter_var(trim($email), FILTER_VALIDATE_EMAIL)) {
@@ -124,17 +126,17 @@ class User
         return $this->active;
     }
 
-    public function setActive(bool $active)
+    public function setActive(bool $active): void
     {
         $this->active = $active;
     }
 
-    public function setPassword(string $password)
+    public function setPassword(string $password): void
     {
         $this->passwordHash = self::hashPassword(trim($password));
     }
 
-    public function setPasswordHash(string $passwordHash)
+    public function setPasswordHash(string $passwordHash): void
     {
         $this->passwordHash = trim($passwordHash);
     }
@@ -142,7 +144,7 @@ class User
     public static function hashPassword(string $password): string
     {
         self::validatePassword($password);
-        return \password_hash($password, PASSWORD_DEFAULT);
+        return password_hash($password, PASSWORD_DEFAULT);
     }
 
     // Enforces the password policy. Throws EXCEPTION_INVALID_PASSWORD when the
@@ -159,7 +161,7 @@ class User
 
     public function verifyPassword(string $password): bool
     {
-        return \password_verify(trim($password), $this->passwordHash);
+        return password_verify(trim($password), $this->passwordHash);
     }
 
     public function isMemberOf(string $group): bool
@@ -168,7 +170,7 @@ class User
         if ($groupProvider->exists('displayName', $group)) {
             $group = $groupProvider->read('displayName', $group);
             return $group->hasMember($this->_id);
-        } else if ($groupProvider->exists('id', $group)) {
+        } elseif ($groupProvider->exists('id', $group)) {
             $group = $groupProvider->read('id', $group);
             return $group->hasMember($this->_id);
         } else {
@@ -181,7 +183,7 @@ class User
         return $this->loginAttempts;
     }
 
-    public function setLoginAttempts(int $loginAttempts)
+    public function setLoginAttempts(int $loginAttempts): void
     {
         $this->loginAttempts = $loginAttempts;
     }
@@ -193,7 +195,7 @@ class User
 
     public function getLocation(): string
     {
-        return (Utils::isHttps() ? "https" : "http") . "://$_SERVER[HTTP_HOST]" . str_replace("index.php", "", $_SERVER['SCRIPT_NAME']) . "scim/users/" . $this->_id;
+        return (Utils::isHttps() ? 'https' : 'http') . "://$_SERVER[HTTP_HOST]" . str_replace('index.php', '', $_SERVER['SCRIPT_NAME']) . 'scim/users/' . $this->_id;
     }
 
     public function getAttributes(): array
@@ -234,7 +236,7 @@ class User
             'created' => date(DATE_ATOM, $result['_created']),
             'lastModified' => date(DATE_ATOM, $result['_modified']),
             'version' => $etag,
-            'location' => (Utils::isHttps() ? "https" : "http") . "://$_SERVER[HTTP_HOST]" . str_replace("index.php", "", $_SERVER['SCRIPT_NAME']) . "scim/users/" . $result['id']
+            'location' => (Utils::isHttps() ? 'https' : 'http') . "://$_SERVER[HTTP_HOST]" . str_replace('index.php', '', $_SERVER['SCRIPT_NAME']) . 'scim/users/' . $result['id']
         ];
         if ($includeEtagLastModified) {
             $result['etagLastModified'] = $result['_modified'];
@@ -250,7 +252,7 @@ class User
         return $result;
     }
 
-    public function setAttributes(array $attributes)
+    public function setAttributes(array $attributes): void
     {
         if (array_key_exists('schemas', $attributes)) {
             $this->schemas = $attributes['schemas'];
@@ -281,12 +283,12 @@ class User
         }
         if (array_key_exists('passwordHash', $attributes)) {
             $this->setPasswordHash($attributes['passwordHash']);
-        } else if (array_key_exists('password', $attributes)) {
+        } elseif (array_key_exists('password', $attributes)) {
             $this->setPassword($attributes['password']);
         }
         if (array_key_exists('email', $attributes)) {
             $this->setEmail($attributes['email']);
-        } else if (array_key_exists('emails', $attributes) && is_array($attributes['emails'])) {
+        } elseif (array_key_exists('emails', $attributes) && is_array($attributes['emails'])) {
             if ($attributes['emails'] && count($attributes['emails']) > 0) {
                 $this->setEmail($attributes['emails'][0]['value']);
             }
@@ -305,7 +307,8 @@ class User
         }
     }
 
-    public function fromSCIM(array $attributes) {
+    public function fromSCIM(array $attributes): void
+    {
         $this->setAttributes($attributes);
     }
 
