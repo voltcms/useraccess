@@ -38,6 +38,7 @@ tests/                     # PHPUnit tests
   UserTest.php             # User entity unit test
   UserProviderTest.php     # Full provider + SessionAuth integration test (uses real FileDB)
   SCIMTest.php             # SCIM handler tests using mocked providers
+  CustomAttributesTest.php # Custom user attributes: entity rules + FileDB persistence
 demo/
   api/index.php            # Wires providers + SCIM together; seeds an Administrator user
   api/.htaccess            # Apache rewrite to front-controller + Authorization passthrough
@@ -86,6 +87,15 @@ analysis (PHPStan/Psalm) and a coding-standard check are not wired up yet. Alway
   `fromSCIM()` / `setAttributes()` / `getAttributes()`), and enforce field-level
   validation inside their setters (e.g. `User::setEmail` uses `FILTER_VALIDATE_EMAIL`,
   `setUserName` uses `Sanitizer::REGEX_NAME`).
+- **Custom user attributes**: beyond its fixed fields, `User` carries an open
+  `customAttributes` map for host-defined data (`get/set/has/removeCustomAttribute`,
+  `get/setCustomAttributes`, `clearCustomAttributes`). Names must match
+  `Sanitizer::REGEX_ATTRIBUTE_NAME`, stay within `Sanitizer::ATTRIBUTE_NAME_MAX_LENGTH`,
+  and must not collide with `User::RESERVED_ATTRIBUTE_NAMES` (otherwise a custom
+  `passwordHash` would ride the attribute map into `setAttributes()`); values are a
+  scalar, `null`, or a flat list of those. Lookups are case-insensitive. The map is
+  persisted under `customAttributes` and exposed over SCIM under the extension URN
+  `User::CUSTOM_SCHEMA` — see "Custom attributes over SCIM" below.
 - **Providers** (`UserProvider`, `GroupProvider`) are the persistence layer. Both are
   **singletons** (`getInstance(?array $config)`) wrapping a `VoltCMS\FileDB\FileDB`
   instance rooted at `$config['directory']` (defaults to `data`). They expose a uniform
@@ -125,6 +135,15 @@ analysis (PHPStan/Psalm) and a coding-standard check are not wired up yet. Alway
   `urn:ietf:params:scim:api:messages:2.0:Error` body and `exit()`s. Many validation
   failures call `exit($this->throwError(...))`. Handlers set HTTP status via the third
   arg of `header(..., true, $code)`.
+- **Custom attributes over SCIM**: host-defined user attributes travel in the extension
+  object `urn:ietf:params:scim:schemas:extension:voltcms:2.0:User` (`User::CUSTOM_SCHEMA`),
+  accepted on create/PUT whether or not the client also declares the URN in `schemas`, and
+  echoed back (with the URN appended to `schemas`) only when the user actually has any.
+  PATCH understands `<urn>:<name>` and the `customAttributes.<name>` alias for a single
+  attribute, and the bare root path for the whole set — `add` merges, `replace` swaps,
+  `remove` clears. `showResourceTypes` advertises it via `schemaExtensions` and
+  `showSchemas` serves the (deliberately attribute-less, because deployment-defined)
+  extension schema. Filtering on custom attributes is not supported.
 - Payload validation lives in `parseUserPayload` / `parseGroupPayload` (schema presence,
   required `userName`/`displayName`, type-checking of optional SCIM fields, uniqueness).
 - `enforceAuthentication` (**default true — secure by default**) gates the whole router:
@@ -182,8 +201,10 @@ analysis (PHPStan/Psalm) and a coding-standard check are not wired up yet. Alway
 
 ### Sanitization & validation
 - Centralize input cleaning in `Sanitizer`: `sanitizeString` lowercases, trims, converts
-  whitespace to `-`, strips anything outside `[a-z0-9_-]`. `REGEX_ID` and `REGEX_NAME`
-  bound identifier formats. Prefer these helpers over ad-hoc regex.
+  whitespace to `-`, strips anything outside `[a-z0-9_-]`. `REGEX_ID`, `REGEX_NAME` and
+  `REGEX_ATTRIBUTE_NAME` (paired with `ATTRIBUTE_NAME_MAX_LENGTH`, checked separately so
+  the length bound is not duplicated inside the pattern) bound identifier formats. Prefer
+  these helpers over ad-hoc regex.
 
 ## Coding style
 
