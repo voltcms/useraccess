@@ -13,17 +13,24 @@ class SCIMTest extends TestCase
     private $scim;
     private $userProviderMock;
     private $groupProviderMock;
+    private $serverBackup;
 
     protected function setUp(): void
     {
         $this->userProviderMock = $this->createMock(UserProviderInterface::class);
         $this->groupProviderMock = $this->createMock(GroupProviderInterface::class);
 
+        // Location URLs in real (unmocked) entities are derived from the request.
+        $this->serverBackup = $_SERVER;
+        $_SERVER['HTTP_HOST'] = 'example.test';
+        $_SERVER['SCRIPT_NAME'] = '/api/index.php';
+
         $this->scim = new SCIM($this->userProviderMock, $this->groupProviderMock);
     }
 
     protected function tearDown(): void
     {
+        $_SERVER = $this->serverBackup;
         // SCIM's constructor initializes the SessionAuth singleton with these
         // mock providers. Reset it so the mocks don't leak into other tests
         // (e.g. UserProviderTest) that build SessionAuth with real providers.
@@ -385,5 +392,298 @@ class SCIMTest extends TestCase
         $this->assertStringContainsString('"name":"userName"', $single);
         // password must be advertised as write-only / never returned.
         $this->assertStringContainsString('"mutability":"writeOnly"', $single);
+    }
+
+    public function testCreateUserStoresCustomAttributes()
+    {
+        $this->userProviderMock->method('exists')->willReturn(false);
+        $this->userProviderMock
+            ->expects($this->once())
+            ->method('create')
+            ->willReturnCallback(function (User $user) {
+                // Stand in for the provider handing back the stored document.
+                $user->setAttributes([
+                    '_id' => '77777777-7777-7777-7777-777777777777',
+                    '_created' => 1700000000,
+                    '_modified' => 1700000000,
+                ]);
+                return $user;
+            });
+
+        $body = json_encode([
+            'schemas' => [User::SCHEMA, User::CUSTOM_SCHEMA],
+            'userName' => 'customuser',
+            'password' => 'password',
+            User::CUSTOM_SCHEMA => ['department' => 'Engineering', 'employeeNumber' => 4711],
+        ]);
+
+        ob_start();
+        $this->scim->createUser($body);
+        $out = ob_get_clean();
+
+        $this->assertStringContainsString('"' . User::CUSTOM_SCHEMA . '":{"department":"Engineering","employeeNumber":4711}', $out);
+        $this->assertStringContainsString(User::CUSTOM_SCHEMA, $out);
+        $this->assertStringNotContainsString('customAttributes', $out);
+    }
+
+    public function testCreateUserAcceptsTheExtensionWithoutDeclaringItInSchemas()
+    {
+        $this->userProviderMock->method('exists')->willReturn(false);
+        $this->userProviderMock
+            ->expects($this->once())
+            ->method('create')
+            ->willReturnCallback(function (User $user) {
+                $user->setAttributes(['_id' => 'id', '_created' => 1700000000, '_modified' => 1700000000]);
+                return $user;
+            });
+
+        $body = json_encode([
+            'schemas' => [User::SCHEMA],
+            'userName' => 'lenientuser',
+            'password' => 'password',
+            User::CUSTOM_SCHEMA => ['tenant' => 'acme'],
+        ]);
+
+        ob_start();
+        $this->scim->createUser($body);
+        $out = ob_get_clean();
+
+        $this->assertStringContainsString('"tenant":"acme"', $out);
+    }
+
+    public function testPutUserPassesTheCustomExtensionToTheEntity()
+    {
+        $userID = '88888888-8888-8888-8888-888888888888';
+        $user = $this->createMock(User::class);
+        $user->method('getId')->willReturn($userID);
+        $user->method('toSCIM')->willReturn(['id' => $userID]);
+        $user->expects($this->once())
+            ->method('fromSCIM')
+            ->with($this->callback(function (array $attributes) {
+                return ($attributes[User::CUSTOM_SCHEMA] ?? null) === ['department' => 'Support'];
+            }));
+
+        $this->userProviderMock->method('exists')->willReturn(true);
+        $this->userProviderMock->method('read')->willReturn($user);
+        $this->userProviderMock->expects($this->once())->method('update')->willReturn($user);
+
+        $body = json_encode([
+            'schemas' => [User::SCHEMA, User::CUSTOM_SCHEMA],
+            'userName' => 'customuser',
+            User::CUSTOM_SCHEMA => ['department' => 'Support'],
+        ]);
+
+        $this->expectOutputRegex('/"id":"88888888-8888-8888-8888-888888888888"/');
+        $this->scim->putUser($body, $userID);
+    }
+
+    public function testPutUserWithAnEmptyExtensionClearsCustomAttributes()
+    {
+        $userID = '18181818-1818-1818-1818-181818181818';
+        $user = $this->createMock(User::class);
+        $user->method('getId')->willReturn($userID);
+        $user->method('toSCIM')->willReturn(['id' => $userID]);
+        // An empty extension object is a body, not a malformed request: it is
+        // how a client drops every custom attribute.
+        $user->expects($this->once())
+            ->method('fromSCIM')
+            ->with($this->callback(function (array $attributes) {
+                return ($attributes[User::CUSTOM_SCHEMA] ?? null) === [];
+            }));
+
+        $this->userProviderMock->method('exists')->willReturn(true);
+        $this->userProviderMock->method('read')->willReturn($user);
+        $this->userProviderMock->expects($this->once())->method('update')->willReturn($user);
+
+        $body = json_encode([
+            'schemas' => [User::SCHEMA, User::CUSTOM_SCHEMA],
+            'userName' => 'customuser',
+            User::CUSTOM_SCHEMA => new stdClass(),
+        ]);
+
+        $this->expectOutputRegex('/"id":"18181818-1818-1818-1818-181818181818"/');
+        $this->scim->putUser($body, $userID);
+    }
+
+    public function testPatchUserSetsASingleCustomAttribute()
+    {
+        $userID = '99999999-9999-9999-9999-999999999999';
+        $user = $this->createMock(User::class);
+        $user->expects($this->once())->method('setCustomAttribute')->with('department', 'Engineering');
+        $user->method('toSCIM')->willReturn(['id' => $userID]);
+
+        $this->userProviderMock->method('exists')->willReturn(true);
+        $this->userProviderMock->method('read')->willReturn($user);
+        $this->userProviderMock->expects($this->once())->method('update')->willReturn($user);
+
+        $body = json_encode([
+            'schemas' => ['urn:ietf:params:scim:api:messages:2.0:PatchOp'],
+            'Operations' => [
+                ['op' => 'replace', 'path' => User::CUSTOM_SCHEMA . ':department', 'value' => 'Engineering'],
+            ],
+        ]);
+
+        $this->expectOutputRegex('/"id":"99999999-9999-9999-9999-999999999999"/');
+        $this->scim->patchUser($body, $userID);
+    }
+
+    public function testPatchUserSetsACustomAttributeViaTheStorageAliasPath()
+    {
+        $userID = '10101010-1010-1010-1010-101010101010';
+        $user = $this->createMock(User::class);
+        $user->expects($this->once())->method('setCustomAttribute')->with('tenant', 'acme');
+        $user->method('toSCIM')->willReturn(['id' => $userID]);
+
+        $this->userProviderMock->method('exists')->willReturn(true);
+        $this->userProviderMock->method('read')->willReturn($user);
+        $this->userProviderMock->expects($this->once())->method('update')->willReturn($user);
+
+        $body = json_encode([
+            'schemas' => ['urn:ietf:params:scim:api:messages:2.0:PatchOp'],
+            'Operations' => [
+                ['op' => 'add', 'path' => 'customAttributes.tenant', 'value' => 'acme'],
+            ],
+        ]);
+
+        $this->expectOutputRegex('/"id":"10101010-1010-1010-1010-101010101010"/');
+        $this->scim->patchUser($body, $userID);
+    }
+
+    public function testPatchUserReplaceOnTheExtensionRootSwapsTheWholeSet()
+    {
+        $userID = '12121212-1212-1212-1212-121212121212';
+        $user = $this->createMock(User::class);
+        $user->expects($this->once())->method('setCustomAttributes')->with(['tenant' => 'acme']);
+        $user->expects($this->never())->method('setCustomAttribute');
+        $user->method('toSCIM')->willReturn(['id' => $userID]);
+
+        $this->userProviderMock->method('exists')->willReturn(true);
+        $this->userProviderMock->method('read')->willReturn($user);
+        $this->userProviderMock->expects($this->once())->method('update')->willReturn($user);
+
+        $body = json_encode([
+            'schemas' => ['urn:ietf:params:scim:api:messages:2.0:PatchOp'],
+            'Operations' => [
+                ['op' => 'replace', 'path' => User::CUSTOM_SCHEMA, 'value' => ['tenant' => 'acme']],
+            ],
+        ]);
+
+        $this->expectOutputRegex('/"id":"12121212-1212-1212-1212-121212121212"/');
+        $this->scim->patchUser($body, $userID);
+    }
+
+    public function testPatchUserAddOnTheExtensionRootMergesAttributes()
+    {
+        $userID = '13131313-1313-1313-1313-131313131313';
+        $user = $this->createMock(User::class);
+        // 'add' must merge, so each attribute is set individually and the
+        // existing set is left in place.
+        $matcher = $this->exactly(2);
+        $user->expects($matcher)->method('setCustomAttribute');
+        $user->expects($this->never())->method('setCustomAttributes');
+        $user->method('toSCIM')->willReturn(['id' => $userID]);
+
+        $this->userProviderMock->method('exists')->willReturn(true);
+        $this->userProviderMock->method('read')->willReturn($user);
+        $this->userProviderMock->expects($this->once())->method('update')->willReturn($user);
+
+        $body = json_encode([
+            'schemas' => ['urn:ietf:params:scim:api:messages:2.0:PatchOp'],
+            'Operations' => [
+                ['op' => 'add', 'path' => User::CUSTOM_SCHEMA, 'value' => ['tenant' => 'acme', 'department' => 'Engineering']],
+            ],
+        ]);
+
+        $this->expectOutputRegex('/"id":"13131313-1313-1313-1313-131313131313"/');
+        $this->scim->patchUser($body, $userID);
+    }
+
+    public function testPatchUserRemovesASingleCustomAttribute()
+    {
+        $userID = '14141414-1414-1414-1414-141414141414';
+        $user = $this->createMock(User::class);
+        $user->expects($this->once())->method('removeCustomAttribute')->with('department');
+        $user->expects($this->never())->method('clearCustomAttributes');
+        $user->method('toSCIM')->willReturn(['id' => $userID]);
+
+        $this->userProviderMock->method('exists')->willReturn(true);
+        $this->userProviderMock->method('read')->willReturn($user);
+        $this->userProviderMock->expects($this->once())->method('update')->willReturn($user);
+
+        $body = json_encode([
+            'schemas' => ['urn:ietf:params:scim:api:messages:2.0:PatchOp'],
+            'Operations' => [
+                ['op' => 'remove', 'path' => User::CUSTOM_SCHEMA . ':department'],
+            ],
+        ]);
+
+        $this->expectOutputRegex('/"id":"14141414-1414-1414-1414-141414141414"/');
+        $this->scim->patchUser($body, $userID);
+    }
+
+    public function testPatchUserRemovesEveryCustomAttribute()
+    {
+        $userID = '15151515-1515-1515-1515-151515151515';
+        $user = $this->createMock(User::class);
+        $user->expects($this->once())->method('clearCustomAttributes');
+        $user->method('toSCIM')->willReturn(['id' => $userID]);
+
+        $this->userProviderMock->method('exists')->willReturn(true);
+        $this->userProviderMock->method('read')->willReturn($user);
+        $this->userProviderMock->expects($this->once())->method('update')->willReturn($user);
+
+        $body = json_encode([
+            'schemas' => ['urn:ietf:params:scim:api:messages:2.0:PatchOp'],
+            'Operations' => [
+                ['op' => 'remove', 'path' => User::CUSTOM_SCHEMA],
+            ],
+        ]);
+
+        $this->expectOutputRegex('/"id":"15151515-1515-1515-1515-151515151515"/');
+        $this->scim->patchUser($body, $userID);
+    }
+
+    public function testPathlessPatchCarriesTheCustomExtension()
+    {
+        $userID = '16161616-1616-1616-1616-161616161616';
+        $user = $this->createMock(User::class);
+        $user->expects($this->once())->method('setDisplayName')->with('Custom User');
+        $user->expects($this->once())->method('setCustomAttributes')->with(['tenant' => 'acme']);
+        $user->method('toSCIM')->willReturn(['id' => $userID]);
+
+        $this->userProviderMock->method('exists')->willReturn(true);
+        $this->userProviderMock->method('read')->willReturn($user);
+        $this->userProviderMock->expects($this->once())->method('update')->willReturn($user);
+
+        $body = json_encode([
+            'schemas' => ['urn:ietf:params:scim:api:messages:2.0:PatchOp'],
+            'Operations' => [
+                ['op' => 'replace', 'value' => [
+                    'displayName' => 'Custom User',
+                    User::CUSTOM_SCHEMA => ['tenant' => 'acme'],
+                ]],
+            ],
+        ]);
+
+        $this->expectOutputRegex('/"id":"16161616-1616-1616-1616-161616161616"/');
+        $this->scim->patchUser($body, $userID);
+    }
+
+    public function testDiscoveryAdvertisesTheCustomAttributeExtension()
+    {
+        ob_start();
+        $this->scim->showResourceTypes('User');
+        $resourceType = ob_get_clean();
+        $this->assertStringContainsString('"schemaExtensions":[{"schema":"' . User::CUSTOM_SCHEMA . '","required":false}]', $resourceType);
+
+        ob_start();
+        $this->scim->showSchemas(null);
+        $list = ob_get_clean();
+        $this->assertStringContainsString(User::CUSTOM_SCHEMA, $list);
+
+        ob_start();
+        $this->scim->showSchemas(User::CUSTOM_SCHEMA);
+        $single = ob_get_clean();
+        $this->assertStringContainsString('"name":"CustomUserAttributes"', $single);
     }
 }

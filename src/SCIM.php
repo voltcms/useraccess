@@ -215,7 +215,10 @@ class SCIM
                 case 'EXCEPTION_INVALID_USER_NAME':
                     $this->throwError(400, "The 'userName' value contains invalid characters.");
                 case 'EXCEPTION_INVALID_PASSWORD':
-                    $this->throwError(400, $this->messageForException('EXCEPTION_INVALID_PASSWORD'));
+                case 'EXCEPTION_INVALID_ATTRIBUTE_NAME':
+                case 'EXCEPTION_RESERVED_ATTRIBUTE_NAME':
+                case 'EXCEPTION_INVALID_ATTRIBUTE_VALUE':
+                    $this->throwError(400, $this->messageForException($e->getMessage()));
                 default:
                     // Never surface raw internal exception codes to the client.
                     $this->throwError(500, 'The user could not be created due to an internal error.');
@@ -378,7 +381,7 @@ class SCIM
                 switch ($op) {
                     case 'add':
                     case 'replace':
-                        $this->applyUserAddReplace($user, $userID, $path, $value);
+                        $this->applyUserAddReplace($user, $userID, $op, $path, $value);
                         break;
                     case 'remove':
                         $this->applyUserRemove($user, $path);
@@ -438,7 +441,10 @@ class SCIM
             if ($schema === 'urn:ietf:params:scim:schemas:core:2.0:User') {
                 continue;
             }
-            if ($payload[$schema] == '') {
+            // An empty object is a body — it is how a client clears an extension
+            // (e.g. dropping every custom attribute on a PUT). Only a missing,
+            // null or empty-string body is malformed.
+            if (!array_key_exists($schema, $payload) || $payload[$schema] === null || $payload[$schema] === '') {
                 $this->throwError(400, "The schema '" . htmlentities($schema, ENT_QUOTES) . "' was defined in the request, but it did not have a body set.");
             }
         }
@@ -592,8 +598,17 @@ class SCIM
                 }
             }
         }
+        // Host-defined attributes travel in the CUSTOM_SCHEMA extension object.
+        // It is accepted whether or not the client also declared the URN in
+        // 'schemas' — the entity validates the individual names and values.
+        if (array_key_exists(User::CUSTOM_SCHEMA, $payload)) {
+            $extension = $payload[User::CUSTOM_SCHEMA];
+            if (!is_array($extension) || (count($extension) > 0 && array_is_list($extension))) {
+                $this->throwError(400, "The '" . htmlentities(User::CUSTOM_SCHEMA, ENT_QUOTES) . "' extension must be an object of attribute name/value pairs.");
+            }
+        }
         foreach ($payload as $key => $value) {
-            if (!in_array($key, ['schemas', 'id', 'externalId', 'meta', 'userName', 'name', 'displayName', 'nickName', 'profileUrl', 'title', 'userType', 'preferredLanguage', 'locale', 'timezone', 'active', 'password', 'emails', 'phoneNumbers', 'ims', 'photos', 'addresses', 'groups', 'entitlements', 'roles', 'x509Certificates']) && !in_array($key, $schemas)) {
+            if (!in_array($key, ['schemas', 'id', 'externalId', 'meta', 'userName', 'name', 'displayName', 'nickName', 'profileUrl', 'title', 'userType', 'preferredLanguage', 'locale', 'timezone', 'active', 'password', 'emails', 'phoneNumbers', 'ims', 'photos', 'addresses', 'groups', 'entitlements', 'roles', 'x509Certificates', User::CUSTOM_SCHEMA]) && !in_array($key, $schemas)) {
                 $this->throwError(400, "The '" . htmlentities($key, ENT_QUOTES) . "' field must not be present in the request.");
             }
         }
@@ -837,6 +852,7 @@ class SCIM
                 'endpoint' => '/scim/users',
                 'description' => 'User Account',
                 'schema' => User::SCHEMA,
+                'schemaExtensions' => [['schema' => User::CUSTOM_SCHEMA, 'required' => false]],
                 'meta' => ['resourceType' => 'ResourceType', 'location' => $this->baseUrl() . 'scim/ResourceTypes/User'],
             ],
             'Group' => [
@@ -886,6 +902,18 @@ class SCIM
                     $this->attributeDef('password', 'string', ['mutability' => 'writeOnly', 'returned' => 'never']),
                 ],
                 'meta' => ['resourceType' => 'Schema', 'location' => $this->baseUrl() . 'scim/Schemas/' . User::SCHEMA],
+            ],
+            User::CUSTOM_SCHEMA => [
+                'schemas' => ['urn:ietf:params:scim:schemas:core:2.0:Schema'],
+                'id' => User::CUSTOM_SCHEMA,
+                'name' => 'CustomUserAttributes',
+                // The attribute set is chosen by the deployment, not by this
+                // library, so the definition is deliberately open: it states the
+                // value types that are accepted rather than a fixed attribute
+                // list a client could rely on.
+                'description' => 'Host-defined attributes stored on a user. Attribute names are chosen by the deployment; each value is a string, number, boolean, null, or a flat list of those.',
+                'attributes' => [],
+                'meta' => ['resourceType' => 'Schema', 'location' => $this->baseUrl() . 'scim/Schemas/' . User::CUSTOM_SCHEMA],
             ],
             Group::SCHEMA => [
                 'schemas' => ['urn:ietf:params:scim:schemas:core:2.0:Schema'],
@@ -1037,22 +1065,31 @@ class SCIM
         return $payload['Operations'];
     }
 
-    private function applyUserAddReplace(User $user, string $userID, mixed $path, mixed $value): void
+    private function applyUserAddReplace(User $user, string $userID, string $op, mixed $path, mixed $value): void
     {
         if ($path === null || $path === '') {
             if (!is_array($value)) {
                 $this->throwError(400, 'A PATCH add/replace without a path requires an object value.');
             }
             foreach ($value as $attributePath => $attributeValue) {
-                $this->setUserAttribute($user, $userID, $attributePath, $attributeValue);
+                $this->setUserAttribute($user, $userID, $op, $attributePath, $attributeValue);
             }
             return;
         }
-        $this->setUserAttribute($user, $userID, $path, $value);
+        $this->setUserAttribute($user, $userID, $op, $path, $value);
     }
 
     private function applyUserRemove(User $user, mixed $path): void
     {
+        if ($this->isCustomAttributeRoot($path)) {
+            $user->clearCustomAttributes();
+            return;
+        }
+        $customName = $this->customAttributeName($path);
+        if ($customName !== null) {
+            $user->removeCustomAttribute($customName);
+            return;
+        }
         switch ($path) {
             case 'displayName':
                 $user->setDisplayName('');
@@ -1077,8 +1114,28 @@ class SCIM
         }
     }
 
-    private function setUserAttribute(User $user, string $userID, mixed $path, mixed $value): void
+    private function setUserAttribute(User $user, string $userID, string $op, mixed $path, mixed $value): void
     {
+        // The whole custom-attribute set. 'add' merges into what is already
+        // stored, 'replace' swaps the set wholesale (RFC 7644 §3.5.2).
+        if ($this->isCustomAttributeRoot($path)) {
+            if (!is_array($value)) {
+                $this->throwError(400, 'A PATCH of the custom attribute extension requires an object value.');
+            }
+            if ($op === 'add') {
+                foreach ($value as $name => $attributeValue) {
+                    $user->setCustomAttribute((string) $name, $attributeValue);
+                }
+            } else {
+                $user->setCustomAttributes($value);
+            }
+            return;
+        }
+        $customName = $this->customAttributeName($path);
+        if ($customName !== null) {
+            $user->setCustomAttribute($customName, $value);
+            return;
+        }
         switch ($path) {
             case 'userName':
                 if ($this->userProvider->exists('userName', $value)) {
@@ -1113,6 +1170,36 @@ class SCIM
             default:
                 $this->throwError(400, "The attribute '" . htmlentities((string) $path, ENT_QUOTES) . "' cannot be modified via PATCH.");
         }
+    }
+
+    // True when a PATCH path addresses the custom attribute set as a whole:
+    // either the bare extension URN, or the storage-shaped 'customAttributes'
+    // alias that mirrors the other flat paths this handler accepts.
+    private function isCustomAttributeRoot(mixed $path): bool
+    {
+        if (!is_string($path)) {
+            return false;
+        }
+        $path = trim($path);
+        return strcasecmp($path, User::CUSTOM_SCHEMA) === 0 || strcasecmp($path, 'customAttributes') === 0;
+    }
+
+    // Extracts the attribute name from a path that addresses a single custom
+    // attribute — the fully qualified '<urn>:<name>' form of RFC 7644 §3.5.2, or
+    // the 'customAttributes.<name>' alias. Returns null for any other path.
+    private function customAttributeName(mixed $path): ?string
+    {
+        if (!is_string($path)) {
+            return null;
+        }
+        $path = trim($path);
+        foreach ([User::CUSTOM_SCHEMA . ':', 'customAttributes.'] as $prefix) {
+            if (strncasecmp($path, $prefix, strlen($prefix)) === 0) {
+                $name = substr($path, strlen($prefix));
+                return $name === '' ? null : $name;
+            }
+        }
+        return null;
     }
 
     private function extractEmail(mixed $value): string
@@ -1334,6 +1421,12 @@ class SCIM
                 return "The 'userName' value contains invalid characters.";
             case 'EXCEPTION_INVALID_PASSWORD':
                 return "The 'password' must be between " . User::PASSWORD_MIN_LENGTH . ' and ' . User::PASSWORD_MAX_LENGTH . ' characters.';
+            case 'EXCEPTION_INVALID_ATTRIBUTE_NAME':
+                return 'A custom attribute name must start with a letter, may contain only letters, digits, hyphens and underscores, and may be at most ' . Sanitizer::ATTRIBUTE_NAME_MAX_LENGTH . ' characters long.';
+            case 'EXCEPTION_RESERVED_ATTRIBUTE_NAME':
+                return 'That custom attribute name is reserved by a core user attribute.';
+            case 'EXCEPTION_INVALID_ATTRIBUTE_VALUE':
+                return 'A custom attribute value must be a string, number, boolean, null, or a flat list of those.';
             case 'EXCEPTION_ENTRY_NOT_EXIST':
                 return 'The requested resource does not exist.';
             case 'EXCEPTION_EMPTY_ID':

@@ -25,6 +25,7 @@ a complete, fully‑authenticated integration.
 - [Quick start](#quick-start)
 - [Architecture](#architecture)
 - [The SCIM API](#the-scim-api)
+- [Custom user attributes](#custom-user-attributes)
 - [Authentication](#authentication)
 - [Security & hardening](#security--hardening)
 - [Configuration reference](#configuration-reference)
@@ -52,6 +53,8 @@ a complete, fully‑authenticated integration.
   shared‑storage brute‑force lockout, optional HTTPS enforcement + HSTS, proxy‑aware HTTPS
   detection, data‑directory web‑access protection, and an append‑only **audit log** of admin
   actions.
+- **Custom user attributes** — store host‑defined fields on a user; they are exposed over SCIM
+  through a schema extension.
 - **No SQL** — a flat‑file JSON store (`voltcms/filedb`) with a process‑wide write mutex.
 - Small, framework‑light, easy to read and audit.
 
@@ -179,6 +182,75 @@ Notes:
   preserves the current value. Only an explicit boolean/int changes it.
 - **Pagination**: 1‑based `startIndex` + `count`; `totalResults` is the full filtered count.
 - **Filtering**: a single `attribute eq "value"` expression, for both users and groups.
+
+## Custom user attributes
+
+A host application can store its own fields on a user — a department, an employee number, a
+tenant id — without changing this library. They are persisted next to the core fields and are
+carried over SCIM in the extension schema
+`urn:ietf:params:scim:schemas:extension:voltcms:2.0:User` (`User::CUSTOM_SCHEMA`), which is
+how RFC 7643 §3.3 says non‑core attributes should travel. The extension is advertised by
+`/scim/ResourceTypes/User` (`schemaExtensions`) and `/scim/Schemas`.
+
+Rules:
+- **Names** must start with a letter and may contain letters, digits, `-` and `_`, up to 64
+  characters. Lookups are case‑insensitive (SCIM attribute names are), so `Department` and
+  `department` are one attribute.
+- **Reserved names** — anything that collides with a core field (`userName`, `passwordHash`,
+  `active`, …) is rejected, so a custom attribute can never overwrite managed state.
+- **Values** are JSON‑simple: a string, number, boolean, `null`, or a flat list of those.
+  Nested objects are rejected.
+- **Omission preserves**: a `PUT` that does not mention the extension leaves the stored custom
+  attributes alone (the same rule as `active`). Send an empty extension object to clear them.
+
+In PHP:
+
+```php
+$user->setCustomAttribute('department', 'Engineering');
+$user->setCustomAttribute('costCenters', ['de-01', 'de-02']);
+$user->getCustomAttribute('DEPARTMENT');   // 'Engineering' — case-insensitive
+$user->hasCustomAttribute('tenant');       // false
+$user->removeCustomAttribute('costCenters');
+$user->setCustomAttributes(['tenant' => 'acme']);  // replaces the whole set
+$user->clearCustomAttributes();
+$userProvider->update($user);
+```
+
+Over SCIM:
+
+```bash
+# Create with custom attributes
+curl -X POST https://host/scim/users \
+  -H "Authorization: Bearer $SCIM_BEARER" \
+  -H "Content-Type: application/scim+json" \
+  -d '{
+        "schemas": [
+          "urn:ietf:params:scim:schemas:core:2.0:User",
+          "urn:ietf:params:scim:schemas:extension:voltcms:2.0:User"
+        ],
+        "userName": "jdoe",
+        "password": "correcthorsebattery",
+        "urn:ietf:params:scim:schemas:extension:voltcms:2.0:User": {
+          "department": "Engineering",
+          "employeeNumber": 4711
+        }
+      }'
+```
+
+PATCH paths (both the fully qualified URN form of RFC 7644 §3.5.2 and a `customAttributes.…`
+alias are accepted):
+
+| `op` | `path` | Effect |
+|------|--------|--------|
+| add / replace | `urn:…:extension:voltcms:2.0:User:department` | Set one attribute |
+| add / replace | `customAttributes.department` | Same, alias form |
+| add | `urn:…:extension:voltcms:2.0:User` | Merge an object into the set |
+| replace | `urn:…:extension:voltcms:2.0:User` | Replace the whole set |
+| remove | `urn:…:extension:voltcms:2.0:User:department` | Remove one attribute |
+| remove | `urn:…:extension:voltcms:2.0:User` | Remove all custom attributes |
+
+Responses only carry the extension (and list its URN in `schemas`) when the user actually has
+custom attributes. Filtering on custom attributes is not supported.
 
 ## Authentication
 
