@@ -103,9 +103,24 @@ class Utils
         return !empty($value) ? $value : $default;
     }
 
-    public static function getBoolean($booleanString): bool
+    // Interprets a host-supplied flag that may arrive as a real boolean, an int,
+    // or a string from a config file, query parameter or form field. Accepts
+    // 'true', 'yes', 'on' and '1' in any casing, ignoring surrounding whitespace;
+    // anything else (including null, arrays and unparseable strings) is false.
+    // This used to compare against the literal 'True' only, so a lowercase
+    // 'true' silently read as false and disabled the caller's flag.
+    public static function getBoolean(mixed $booleanString): bool
     {
-        return $booleanString == 'True';
+        if (is_bool($booleanString)) {
+            return $booleanString;
+        }
+        if (is_int($booleanString)) {
+            return $booleanString === 1;
+        }
+        if (!is_string($booleanString)) {
+            return false;
+        }
+        return in_array(strtolower(trim($booleanString)), ['true', 'yes', 'on', '1'], true);
     }
 
     public static function setHeader(string $key, string $value): void

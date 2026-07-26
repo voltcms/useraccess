@@ -40,6 +40,30 @@ class UtilsTest extends TestCase
         ));
     }
 
+    public function testGetBooleanAcceptsTruthyStringsInAnyCasing()
+    {
+        // Regression guard: this used to compare against the literal 'True'
+        // only, so a lowercase 'true' from a config file read as false and
+        // silently disabled protectPage()'s redirect flags.
+        foreach (['true', 'True', 'TRUE', 'tRuE', ' true ', 'yes', 'YES', 'on', '1'] as $value) {
+            $this->assertTrue(Utils::getBoolean($value), 'expected true for ' . var_export($value, true));
+        }
+    }
+
+    public function testGetBooleanRejectsEverythingElse()
+    {
+        foreach (['false', 'False', 'no', 'off', '0', '', 'maybe', 'truthy', null, [], 0, 2, 1.0] as $value) {
+            $this->assertFalse(Utils::getBoolean($value), 'expected false for ' . var_export($value, true));
+        }
+    }
+
+    public function testGetBooleanPassesRealBooleansThrough()
+    {
+        $this->assertTrue(Utils::getBoolean(true));
+        $this->assertFalse(Utils::getBoolean(false));
+        $this->assertTrue(Utils::getBoolean(1));
+    }
+
     public function testContentHiddenForMemberWhenNotMemberRequired()
     {
         // A logged-in user who IS a member of the group must be denied content

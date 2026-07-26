@@ -11,8 +11,8 @@ class MembershipTest extends TestCase
 
     public function testDeletingUserRemovesGroupMembership()
     {
-        $userProvider = UserProvider::getInstance(array('directory' => 'tests/data/users'));
-        $groupProvider = GroupProvider::getInstance(array('directory' => 'tests/data/groups'));
+        $userProvider = UserProvider::getInstance(['directory' => 'tests/data/users']);
+        $groupProvider = GroupProvider::getInstance(['directory' => 'tests/data/groups']);
 
         $userProvider->deleteAll();
         $groupProvider->deleteAll();

@@ -406,7 +406,7 @@ passwords; don't leak `passwordHash` or raw `EXCEPTION_*` codes in new responses
 
 ## Not yet implemented
 
-Tracked in [`CLAUDE.md`](CLAUDE.md); contributions welcome:
+Tracked in [`TODO.md`](TODO.md); contributions welcome:
 
 - **Backup / restore** tooling for the flat‑file store (deferred to a follow‑up).
 - SCIM **Bulk**, **sort**, and **complex filtering** (a single `attribute eq "value"` is
