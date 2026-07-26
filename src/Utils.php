@@ -4,29 +4,28 @@ namespace VoltCMS\UserAccess;
 
 class Utils
 {
+    public const ACCESS_STATUS_EVERYONE = 'everyone';
+    public const ACCESS_STATUS_LOGGED_IN = 'logged_in';
+    public const ACCESS_STATUS_LOGGED_IN_MEMBER_OF_GROUP = 'logged_in_member_of_group';
+    public const ACCESS_STATUS_LOGGED_IN_NOT_MEMBER_OF_GROUP = 'logged_in_not_member_of_group';
 
-    const ACCESS_STATUS_EVERYONE = 'everyone';
-    const ACCESS_STATUS_LOGGED_IN = 'logged_in';
-    const ACCESS_STATUS_LOGGED_IN_MEMBER_OF_GROUP = 'logged_in_member_of_group';
-    const ACCESS_STATUS_LOGGED_IN_NOT_MEMBER_OF_GROUP = 'logged_in_not_member_of_group';
-
-    public static function isContentVisible($sessionAuth, $user_status, $logged_in_member_of_group, $logged_in_not_member_of_group)
+    public static function isContentVisible($sessionAuth, $userStatus, $loggedInMemberOfGroup, $loggedInNotMemberOfGroup): bool
     {
-        if ($user_status === Utils::ACCESS_STATUS_EVERYONE) {
+        if ($userStatus === Utils::ACCESS_STATUS_EVERYONE) {
             return true;
         }
-        $loggedIn = (substr($user_status, 0, 9) === Utils::ACCESS_STATUS_LOGGED_IN);
-        $memberOfGroup = ($user_status === Utils::ACCESS_STATUS_LOGGED_IN_MEMBER_OF_GROUP);
-        $notMemberOfGroup = ($user_status === Utils::ACCESS_STATUS_LOGGED_IN_NOT_MEMBER_OF_GROUP);
+        $loggedIn = (substr($userStatus, 0, 9) === Utils::ACCESS_STATUS_LOGGED_IN);
+        $memberOfGroup = ($userStatus === Utils::ACCESS_STATUS_LOGGED_IN_MEMBER_OF_GROUP);
+        $notMemberOfGroup = ($userStatus === Utils::ACCESS_STATUS_LOGGED_IN_NOT_MEMBER_OF_GROUP);
         // user must be logged in
         if ($loggedIn && $sessionAuth->isLoggedIn()) {
             if (!$memberOfGroup && !$notMemberOfGroup) {
                 return true;
             }
-            if ($memberOfGroup && $sessionAuth->isMemberOfGroup($logged_in_member_of_group)) {
+            if ($memberOfGroup && $sessionAuth->isMemberOfGroup($loggedInMemberOfGroup)) {
                 return true;
             }
-            if ($notMemberOfGroup && !$sessionAuth->isMemberOfGroup($logged_in_not_member_of_group)) {
+            if ($notMemberOfGroup && !$sessionAuth->isMemberOfGroup($loggedInNotMemberOfGroup)) {
                 return true;
             }
         }
@@ -36,84 +35,80 @@ class Utils
         return false;
     }
 
-    public static function protectPage($sessionAuth, $user_status, $logged_in_member_of_group, $login_redirect, $forbidden_redirect, $login_page, $forbidden_page)
+    public static function protectPage($sessionAuth, $userStatus, $loggedInMemberOfGroup, $loginRedirect, $forbiddenRedirect, $loginPage, $forbiddenPage): void
     {
-        if ($user_status === 'everyone') {
+        if ($userStatus === 'everyone') {
             return;
         }
-        $memberOfGroup = ($user_status === Utils::ACCESS_STATUS_LOGGED_IN_MEMBER_OF_GROUP);
-        $login_redirect = self::getBoolean($login_redirect);
-        $forbidden_redirect = self::getBoolean($forbidden_redirect);
+        $memberOfGroup = ($userStatus === Utils::ACCESS_STATUS_LOGGED_IN_MEMBER_OF_GROUP);
+        $loginRedirect = self::getBoolean($loginRedirect);
+        $forbiddenRedirect = self::getBoolean($forbiddenRedirect);
         $forbidden = false;
         if (!$sessionAuth->isLoggedIn()) {
-            if ($login_redirect) {
-                header('Location: ' . $login_page . '?ref=' . $_SERVER['REQUEST_URI']);
+            if ($loginRedirect) {
+                header('Location: ' . $loginPage . '?ref=' . $_SERVER['REQUEST_URI']);
                 exit();
             } else {
                 $forbidden = true;
             }
         } else {
-            if ($memberOfGroup && !$sessionAuth->isMemberOfGroup($logged_in_member_of_group)) {
+            if ($memberOfGroup && !$sessionAuth->isMemberOfGroup($loggedInMemberOfGroup)) {
                 $forbidden = true;
             }
         }
         if ($forbidden) {
-            if ($forbidden_redirect) {
-                header('Location: ' . $forbidden_page . '?ref=' . $_SERVER['REQUEST_URI']);
+            if ($forbiddenRedirect) {
+                header('Location: ' . $forbiddenPage . '?ref=' . $_SERVER['REQUEST_URI']);
                 exit();
             } else {
                 ob_end_clean();
                 http_response_code(401);
-                echo "<h1>Forbidden</h1>";
+                echo '<h1>Forbidden</h1>';
                 exit;
             }
         }
     }
 
-    public static function getRootFolder($relativeDocRoot)
+    public static function getRootFolder($relativeDocRoot): string
     {
-        if ($relativeDocRoot == "") {
-            $relativeDocRoot = ".";
-        } elseif ($relativeDocRoot[strlen($relativeDocRoot) - 1] == "/") {
+        if ($relativeDocRoot == '') {
+            $relativeDocRoot = '.';
+        } elseif ($relativeDocRoot[strlen($relativeDocRoot) - 1] === '/') {
             $relativeDocRoot = substr($relativeDocRoot, 0, -1);
         }
         return $relativeDocRoot;
     }
 
-    public static function getDirectory($subfolder, $relativeDocRoot)
+    public static function getDirectory($subfolder, $relativeDocRoot): string
     {
         $directory = '';
         if (str_starts_with($subfolder, 'http://') || str_starts_with($subfolder, 'https://')) {
             $subfolder = substr($subfolder, strpos($subfolder, '/', 8));
         }
-        if ($subfolder[0] == "/") {
+        if ($subfolder[0] === '/') {
             $subfolder = substr($subfolder, 1);
         }
-        if ($subfolder[strlen($subfolder) - 1] !== "/") {
-            $subfolder = $subfolder . "/";
+        if ($subfolder[strlen($subfolder) - 1] !== '/') {
+            $subfolder = $subfolder . '/';
         }
-        if ($subfolder == "/") {
-            $subfolder = "";
+        if ($subfolder === '/') {
+            $subfolder = '';
         }
         $directory = $relativeDocRoot . $subfolder;
         return $directory;
     }
 
-    public static function getDefault(&$value, $default = null)
+    public static function getDefault(&$value, $default = null): mixed
     {
         return !empty($value) ? $value : $default;
     }
 
-    public static function getBoolean($booleanString)
+    public static function getBoolean($booleanString): bool
     {
-        if ($booleanString == "True") {
-            return true;
-        } else {
-            return false;
-        }
+        return $booleanString == 'True';
     }
 
-    public static function setHeader(string $key, string $value)
+    public static function setHeader(string $key, string $value): void
     {
         header($key . ': ' . $value);
     }

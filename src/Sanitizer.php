@@ -4,7 +4,6 @@ namespace VoltCMS\UserAccess;
 
 class Sanitizer
 {
-
     public const REGEX_ID = '/^[a-z0-9_\-]{1,36}/';
     public const REGEX_NAME = '/^[\w\@\.\-]{1,36}/';
 

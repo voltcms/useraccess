@@ -2,20 +2,19 @@
 
 namespace VoltCMS\UserAccess;
 
-use \Exception;
+use Exception;
 
 class HeaderAuth
 {
-
     // A well-formed hash used to equalize verification time when the requested
     // user does not exist, so response timing does not reveal whether a
     // username is valid (username enumeration guard).
     private const DUMMY_PASSWORD_HASH = '$2y$12$KicAYtxg.xPBfMWVd9T/Je38Cmw1QcI70kW91CMD9L0zkpaR3YRpy';
 
-    public static function checkBasicAuthentication($userProvider, ?LoginThrottle $throttle = null): ?User
+    public static function checkBasicAuthentication(UserProviderInterface $userProvider, ?LoginThrottle $throttle = null): ?User
     {
         $authorizationHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
-        if ($authorizationHeader == '') {
+        if ($authorizationHeader === '') {
             $authorizationHeader = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
         }
         if (!str_starts_with($authorizationHeader, 'Basic ')) {

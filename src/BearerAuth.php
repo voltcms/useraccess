@@ -19,7 +19,7 @@ namespace VoltCMS\UserAccess;
 // transient misconfiguration while adding no real protection against guessing.
 class BearerAuth
 {
-    private $tokenHashes = [];
+    private array $tokenHashes = [];
 
     public function __construct(array $tokens = [])
     {

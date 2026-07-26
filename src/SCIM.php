@@ -2,27 +2,26 @@
 
 namespace VoltCMS\UserAccess;
 
-use \Exception;
-use \Bramus\Router\Router;
+use Exception;
+use Bramus\Router\Router;
 
 class SCIM
 {
+    public const MAX_FILTER_RESULTS = 200;
 
-    const MAX_FILTER_RESULTS = 200;
-
-    private $userProvider;
-    private $groupProvider;
-    private $sessionAuth;
-    private $bearerAuth;
-    private $router;
-    private $enforceAuthentication;
-    private $loggedInUser;
-    private $requireHttps = false;
-    private $hstsMaxAge = 0;
-    private $hstsIncludeSubDomains = true;
-    private $auditLog;
-    private $auditActor = 'anonymous';
-    private $auditActorType = 'none';
+    private UserProviderInterface $userProvider;
+    private GroupProviderInterface $groupProvider;
+    private SessionAuth $sessionAuth;
+    private BearerAuth $bearerAuth;
+    private Router $router;
+    private bool $enforceAuthentication;
+    private ?User $loggedInUser = null;
+    private bool $requireHttps = false;
+    private int $hstsMaxAge = 0;
+    private bool $hstsIncludeSubDomains = true;
+    private AuditLog $auditLog;
+    private string $auditActor = 'anonymous';
+    private string $auditActorType = 'none';
 
     // $enforceAuthentication defaults to TRUE (secure by default): unless a
     // caller explicitly opts out, the router requires a logged-in admin
@@ -75,7 +74,7 @@ class SCIM
         $this->hstsIncludeSubDomains = $hstsIncludeSubDomains;
     }
 
-    public function runRouter()
+    public function runRouter(): void
     {
         $this->installErrorHandling();
         $this->enforceTransportSecurity();
@@ -83,7 +82,7 @@ class SCIM
         $this->router->set404(function () {
             //header('HTTP/1.1 404 Not Found');
             // ... do something special here
-            $this->throwError(404, "Not Found");
+            $this->throwError(404, 'Not Found');
         });
 
         if ($this->enforceAuthentication) {
@@ -96,7 +95,7 @@ class SCIM
             if ($this->loggedInUser) {
                 // Session or HTTP Basic identified a user: require admin rights.
                 if (!$this->loggedInUser->isAdmin()) {
-                    $this->throwError(403, "Forbidden");
+                    $this->throwError(403, 'Forbidden');
                 }
                 $this->auditActor = $this->loggedInUser->getUserName();
                 $this->auditActorType = $method;
@@ -106,7 +105,7 @@ class SCIM
                 $this->auditActor = 'bearer-token';
                 $this->auditActorType = 'bearer';
             } else {
-                $this->throwError(401, "Unauthorized");
+                $this->throwError(401, 'Unauthorized');
             }
         }
 
@@ -183,7 +182,7 @@ class SCIM
         $this->router->run();
     }
 
-    public function createUser($requestBody)
+    public function createUser(string $requestBody): void
     {
         $requestBody = $this->parseUserPayload(json_decode($requestBody, 1));
         $user = new User();
@@ -192,7 +191,7 @@ class SCIM
             // if ($key == "schemas")
             //     foreach ($value as $val)
             //         $this->db->addResourceSchema($userID, $val);
-            if (in_array($key, array('id', 'groups', 'meta', 'schemas'))) {
+            if (in_array($key, ['id', 'groups', 'meta', 'schemas'])) {
                 continue;
             }
             $attributes[$key] = $value;
@@ -208,36 +207,35 @@ class SCIM
             error_log('createUser failed: ' . $e->getMessage());
             switch ($e->getMessage()) {
                 case 'EXCEPTION_USER_ALREADY_EXIST':
-                    exit($this->throwError(409, "User with username " . $user->getUserName() . " already exists."));
+                    $this->throwError(409, 'User with username ' . $user->getUserName() . ' already exists.');
                 case 'EXCEPTION_DUPLICATE_EMAIL':
-                    exit($this->throwError(409, "User with email " . $user->getEmail() . " already exists."));
+                    $this->throwError(409, 'User with email ' . $user->getEmail() . ' already exists.');
                 case 'EXCEPTION_INVALID_EMAIL':
-                    exit($this->throwError(400, "The 'emails' value is not a valid email address."));
+                    $this->throwError(400, "The 'emails' value is not a valid email address.");
                 case 'EXCEPTION_INVALID_USER_NAME':
-                    exit($this->throwError(400, "The 'userName' value contains invalid characters."));
+                    $this->throwError(400, "The 'userName' value contains invalid characters.");
                 case 'EXCEPTION_INVALID_PASSWORD':
-                    exit($this->throwError(400, $this->messageForException('EXCEPTION_INVALID_PASSWORD')));
+                    $this->throwError(400, $this->messageForException('EXCEPTION_INVALID_PASSWORD'));
                 default:
                     // Never surface raw internal exception codes to the client.
-                    exit($this->throwError(500, "The user could not be created due to an internal error."));
+                    $this->throwError(500, 'The user could not be created due to an internal error.');
             }
         }
         $this->writeAudit('user.create', 'User', $user->getId(), $user->getUserName());
         $payload = $user->toSCIM();
         unset($payload['_modified']);
-        header("Content-Type: application/scim+json", true, 201);
-        echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
+        $this->emitScim($payload, 201);
     }
 
-    public function getUser($userID, $isIncluded = '')
+    public function getUser(string $userID, string $isIncluded = ''): void
     {
         if (!$this->userProvider->exists('id', $userID)) {
-            $this->throwError(404, "Selected user does not exist.");
+            $this->throwError(404, 'Selected user does not exist.');
         }
         $user = $this->userProvider->read('id', $userID);
         $payload = $user->toSCIM(true);
-        header("Etag: " . $payload['meta']['version']);
-        header("Last-Modified: " . gmdate("D, d M Y H:i:s", $payload['etagLastModified']) . " GMT");
+        header('Etag: ' . $payload['meta']['version']);
+        header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $payload['etagLastModified']) . ' GMT');
         unset($payload['etagLastModified']);
 
         // $payload['schemas'] = $schemas;
@@ -319,29 +317,27 @@ class SCIM
         //     "location" => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]" . str_replace("index.php", "", $_SERVER['SCRIPT_NAME']) . "scim/users/" . $userID
         // );
 
-        header("Content-Type: application/scim+json", true, 200);
-        echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
+        $this->emitScim($payload);
     }
 
-    public function listUsers($options)
+    public function listUsers(array $options): void
     {
         $users = $this->findByFilter($this->userProvider, $options);
         $payload = $this->buildListResponse($users, $options);
-        header('Content-Type: application/scim+json', true, 200);
-        echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
+        $this->emitScim($payload);
     }
 
-    public function putUser($requestBody, $userID)
+    public function putUser(string $requestBody, string $userID): void
     {
         $requestBody = $this->parseUserPayload(json_decode($requestBody, 1), true);
         if (!$this->userProvider->exists('id', $userID)) {
-            $this->throwError(404, "Selected user does not exist.");
+            $this->throwError(404, 'Selected user does not exist.');
         }
         $user = $this->userProvider->read('id', $userID);
         if ($this->userProvider->exists('userName', $requestBody['userName'])) {
             $userCheck = $this->userProvider->read('userName', $requestBody['userName']);
-            if ($userCheck->getId() != $user->getId()) {
-                exit($this->throwError(400, "The username has already been taken by another user."));
+            if ($userCheck->getId() !== $user->getId()) {
+                $this->throwError(400, 'The username has already been taken by another user.');
             }
         }
         $attributes = [];
@@ -349,7 +345,7 @@ class SCIM
             // if ($key == "schemas")
             //     foreach ($value as $val)
             //         $this->db->addResourceSchema($userID, $val);
-            if (in_array($key, array('id', 'groups', 'meta', 'schemas'))) {
+            if (in_array($key, ['id', 'groups', 'meta', 'schemas'])) {
                 continue;
             }
             $attributes[$key] = $value;
@@ -359,19 +355,18 @@ class SCIM
             $user = $this->userProvider->update($user);
         } catch (Exception $e) {
             error_log('putUser failed: ' . $e->getMessage());
-            exit($this->throwError($this->statusForException($e->getMessage()), $this->messageForException($e->getMessage())));
+            $this->throwError($this->statusForException($e->getMessage()), $this->messageForException($e->getMessage()));
         }
         $this->writeAudit('user.update', 'User', $user->getId(), $user->getUserName());
         $payload = $user->toSCIM();
         unset($payload['_modified']);
-        header("Content-Type: application/scim+json", true, 200);
-        echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
+        $this->emitScim($payload);
     }
 
-    public function patchUser($requestBody, $userID)
+    public function patchUser(string $requestBody, string $userID): void
     {
         if (!$this->userProvider->exists('id', $userID)) {
-            exit($this->throwError(404, "Selected user does not exist."));
+            $this->throwError(404, 'Selected user does not exist.');
         }
         $operations = $this->parsePatchPayload(json_decode($requestBody, 1));
         $user = $this->userProvider->read('id', $userID);
@@ -389,25 +384,24 @@ class SCIM
                         $this->applyUserRemove($user, $path);
                         break;
                     default:
-                        exit($this->throwError(400, "Unsupported PATCH operation '" . htmlentities((string) $op, ENT_QUOTES) . "'."));
+                        $this->throwError(400, "Unsupported PATCH operation '" . htmlentities((string) $op, ENT_QUOTES) . "'.");
                 }
             }
             $user = $this->userProvider->update($user);
         } catch (Exception $e) {
             error_log('patchUser failed: ' . $e->getMessage());
-            exit($this->throwError($this->statusForException($e->getMessage()), $this->messageForException($e->getMessage())));
+            $this->throwError($this->statusForException($e->getMessage()), $this->messageForException($e->getMessage()));
         }
         $this->writeAudit('user.patch', 'User', $user->getId(), $user->getUserName());
         $payload = $user->toSCIM();
         unset($payload['_modified']);
-        header("Content-Type: application/scim+json", true, 200);
-        echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
+        $this->emitScim($payload);
     }
 
-    public function deleteUser($userID)
+    public function deleteUser(string $userID): void
     {
         if (!$this->userProvider->exists('id', $userID)) {
-            $this->throwError(404, "Selected user does not exist.");
+            $this->throwError(404, 'Selected user does not exist.');
         }
         // Capture the username before deletion so the audit entry is meaningful.
         $userName = null;
@@ -420,96 +414,96 @@ class SCIM
         }
         $this->userProvider->delete($userID);
         $this->writeAudit('user.delete', 'User', $userID, $userName);
-        header("Content-Type: application/scim+json", true, 204);
+        header('Content-Type: application/scim+json', true, 204);
     }
 
-    private function parseUserPayload($payload, $userCheck = false)
+    private function parseUserPayload(mixed $payload, bool $userCheck = false): array
     {
         if (!$payload) {
-            exit($this->throwError(400, "Incorrect request was sent to the SCIM server."));
+            $this->throwError(400, 'Incorrect request was sent to the SCIM server.');
         }
-        if ($userCheck == false) {
+        if ($userCheck === false) {
             if (array_key_exists('userName', $payload) && $this->userProvider->exists('userName', $payload['userName'])) {
-                exit($this->throwError(409, "User with username " . $payload['userName'] . " already exists."));
+                $this->throwError(409, 'User with username ' . $payload['userName'] . ' already exists.');
             }
         }
         if (empty($payload['schemas']) || !is_array($payload['schemas'])) {
-            exit($this->throwError(400, "No schema was found in the request for user creation process."));
+            $this->throwError(400, 'No schema was found in the request for user creation process.');
         }
-        if (!in_array("urn:ietf:params:scim:schemas:core:2.0:User", $payload['schemas'])) {
-            exit($this->throwError(400, "Incorrect schema was sent in the request for user creation process."));
+        if (!in_array('urn:ietf:params:scim:schemas:core:2.0:User', $payload['schemas'])) {
+            $this->throwError(400, 'Incorrect schema was sent in the request for user creation process.');
         }
         $schemas = $payload['schemas'];
         foreach ($schemas as $schema) {
-            if ($schema == "urn:ietf:params:scim:schemas:core:2.0:User") {
+            if ($schema === 'urn:ietf:params:scim:schemas:core:2.0:User') {
                 continue;
             }
-            if ($payload[$schema] == "") {
-                exit($this->throwError(400, "The schema '" . htmlentities($schema, ENT_QUOTES) . "' was defined in the request, but it did not have a body set."));
+            if ($payload[$schema] == '') {
+                $this->throwError(400, "The schema '" . htmlentities($schema, ENT_QUOTES) . "' was defined in the request, but it did not have a body set.");
             }
         }
-        if (!array_key_exists('userName', $payload) || $payload['userName'] == "") {
-            exit($this->throwError(400, "The 'userName' field was not present in the request."));
+        if (!array_key_exists('userName', $payload) || $payload['userName'] == '') {
+            $this->throwError(400, "The 'userName' field was not present in the request.");
         }
         if (!is_string($payload['userName'])) {
-            exit($this->throwError(400, "The 'userName' field sent in the request must be a string."));
+            $this->throwError(400, "The 'userName' field sent in the request must be a string.");
         }
-        if (array_key_exists('name', $payload) && $payload['name'] != "") {
+        if (array_key_exists('name', $payload) && $payload['name'] != '') {
             if (!is_array($payload['name'])) {
-                exit($this->throwError(400, "The 'name' field was sent incorrectly in the request."));
+                $this->throwError(400, "The 'name' field was sent incorrectly in the request.");
             } else {
                 foreach ($payload['name'] as $key => $value) {
-                    if (!in_array($key, array("formatted", "familyName", "givenName", "middleName", "honorificPrefix", "honorificSuffix"))) {
-                        exit($this->throwError(400, "An unexpected field, '" . htmlentities($key, ENT_QUOTES) . "', was found under the 'name' field in the request."));
+                    if (!in_array($key, ['formatted', 'familyName', 'givenName', 'middleName', 'honorificPrefix', 'honorificSuffix'])) {
+                        $this->throwError(400, "An unexpected field, '" . htmlentities($key, ENT_QUOTES) . "', was found under the 'name' field in the request.");
                     } elseif (!is_string($value)) {
-                        exit($this->throwError(400, "The field '" . htmlentities($key, ENT_QUOTES) . "' contains a value that is not string."));
+                        $this->throwError(400, "The field '" . htmlentities($key, ENT_QUOTES) . "' contains a value that is not string.");
                     }
                 }
             }
         }
-        if (array_key_exists('displayName', $payload) && $payload['displayName'] != "") {
+        if (array_key_exists('displayName', $payload) && $payload['displayName'] != '') {
             if (!is_string($payload['displayName'])) {
-                exit($this->throwError(400, "The 'displayName' field was sent incorrectly in the request."));
+                $this->throwError(400, "The 'displayName' field was sent incorrectly in the request.");
             }
         }
-        if (array_key_exists('nickName', $payload) && $payload['nickName'] != "") {
+        if (array_key_exists('nickName', $payload) && $payload['nickName'] != '') {
             if (!is_string($payload['nickName'])) {
-                exit($this->throwError(400, "The 'nickName' field was sent incorrectly in the request."));
+                $this->throwError(400, "The 'nickName' field was sent incorrectly in the request.");
             }
         }
-        if (array_key_exists('profileUrl', $payload) && $payload['profileUrl'] != "") {
+        if (array_key_exists('profileUrl', $payload) && $payload['profileUrl'] != '') {
             if (!is_string($payload['profileUrl'])) {
-                exit($this->throwError(400, "The 'profileUrl' field was sent incorrectly in the request."));
+                $this->throwError(400, "The 'profileUrl' field was sent incorrectly in the request.");
             }
         }
-        if (array_key_exists('title', $payload) && $payload['title'] != "") {
+        if (array_key_exists('title', $payload) && $payload['title'] != '') {
             if (!is_string($payload['title'])) {
-                exit($this->throwError(400, "The 'title' field was sent incorrectly in the request."));
+                $this->throwError(400, "The 'title' field was sent incorrectly in the request.");
             }
         }
-        if (array_key_exists('userType', $payload) && $payload['userType'] != "") {
+        if (array_key_exists('userType', $payload) && $payload['userType'] != '') {
             if (!is_string($payload['userType'])) {
-                exit($this->throwError(400, "The 'userType' field was sent incorrectly in the request."));
+                $this->throwError(400, "The 'userType' field was sent incorrectly in the request.");
             }
         }
-        if (array_key_exists('preferredLanguage', $payload) && $payload['preferredLanguage'] != "") {
+        if (array_key_exists('preferredLanguage', $payload) && $payload['preferredLanguage'] != '') {
             if (!is_string($payload['preferredLanguage'])) {
-                exit($this->throwError(400, "The 'preferredLanguage' field was sent incorrectly in the request."));
+                $this->throwError(400, "The 'preferredLanguage' field was sent incorrectly in the request.");
             }
         }
-        if (array_key_exists('locale', $payload) && $payload['locale'] != "") {
+        if (array_key_exists('locale', $payload) && $payload['locale'] != '') {
             if (!is_string($payload['locale'])) {
-                exit($this->throwError(400, "The 'locale' field was sent incorrectly in the request."));
+                $this->throwError(400, "The 'locale' field was sent incorrectly in the request.");
             }
         }
-        if (array_key_exists('timezone', $payload) && $payload['timezone'] != "") {
+        if (array_key_exists('timezone', $payload) && $payload['timezone'] != '') {
             if (!is_string($payload['timezone'])) {
-                exit($this->throwError(400, "The 'timezone' field was sent incorrectly in the request."));
+                $this->throwError(400, "The 'timezone' field was sent incorrectly in the request.");
             }
         }
-        if (array_key_exists('active', $payload) && $payload['active'] !== "") {
+        if (array_key_exists('active', $payload) && $payload['active'] !== '') {
             if (!is_bool($payload['active']) && !is_integer($payload['active'])) {
-                exit($this->throwError(400, "The 'active' field was sent incorrectly in the request."));
+                $this->throwError(400, "The 'active' field was sent incorrectly in the request.");
             }
             // Normalize an explicit value to a real bool.
             $payload['active'] = ($payload['active'] === true || $payload['active'] === 1);
@@ -521,86 +515,86 @@ class SCIM
             // 'active' silently deactivated the user.
             unset($payload['active']);
         }
-        if (array_key_exists('emails', $payload) && $payload['emails'] != "") {
+        if (array_key_exists('emails', $payload) && $payload['emails'] != '') {
             if (!is_array($payload['emails'])) {
-                exit($this->throwError(400, "The 'emails' field was sent incorrectly in the request."));
+                $this->throwError(400, "The 'emails' field was sent incorrectly in the request.");
             } else {
                 foreach ($payload['emails'] as $emails) {
                     if (!is_array($emails)) {
-                        exit($this->throwError(400, "The 'emails' field was sent incorrectly in the request."));
+                        $this->throwError(400, "The 'emails' field was sent incorrectly in the request.");
                     }
                 }
             }
         }
-        if (array_key_exists('phoneNumbers', $payload) && $payload['phoneNumbers'] != "") {
+        if (array_key_exists('phoneNumbers', $payload) && $payload['phoneNumbers'] != '') {
             if (!is_array($payload['phoneNumbers'])) {
-                exit($this->throwError(400, "The 'phoneNumbers' field was sent incorrectly in the request."));
+                $this->throwError(400, "The 'phoneNumbers' field was sent incorrectly in the request.");
             } else {
                 foreach ($payload['phoneNumbers'] as $phoneNumbers) {
                     if (!is_array($phoneNumbers)) {
-                        exit($this->throwError(400, "The 'phoneNumbers' field was sent incorrectly in the request."));
+                        $this->throwError(400, "The 'phoneNumbers' field was sent incorrectly in the request.");
                     }
                 }
             }
         }
-        if (array_key_exists('ims', $payload) && $payload['ims'] != "") {
+        if (array_key_exists('ims', $payload) && $payload['ims'] != '') {
             if (!is_array($payload['ims'])) {
-                exit($this->throwError(400, "The 'ims' field was sent incorrectly in the request."));
+                $this->throwError(400, "The 'ims' field was sent incorrectly in the request.");
             } else {
                 foreach ($payload['ims'] as $ims) {
                     if (!is_array($ims)) {
-                        exit($this->throwError(400, "The 'ims' field was sent incorrectly in the request."));
+                        $this->throwError(400, "The 'ims' field was sent incorrectly in the request.");
                     }
                 }
             }
         }
-        if (array_key_exists('photos', $payload) && $payload['photos'] != "") {
+        if (array_key_exists('photos', $payload) && $payload['photos'] != '') {
             if (!is_array($payload['photos'])) {
-                exit($this->throwError(400, "The 'photos' field was sent incorrectly in the request."));
+                $this->throwError(400, "The 'photos' field was sent incorrectly in the request.");
             } else {
                 foreach ($payload['photos'] as $photos) {
                     if (!is_array($photos)) {
-                        exit($this->throwError(400, "The 'photos' field was sent incorrectly in the request."));
+                        $this->throwError(400, "The 'photos' field was sent incorrectly in the request.");
                     }
                 }
             }
         }
-        if (array_key_exists('addresses', $payload) && $payload['addresses'] != "") {
+        if (array_key_exists('addresses', $payload) && $payload['addresses'] != '') {
             if (!is_array($payload['addresses'])) {
-                exit($this->throwError(400, "The 'addresses' field was sent incorrectly in the request."));
+                $this->throwError(400, "The 'addresses' field was sent incorrectly in the request.");
             } else {
                 foreach ($payload['addresses'] as $addresses) {
                     if (!is_array($addresses)) {
-                        exit($this->throwError(400, "The 'addresses' field was sent incorrectly in the request."));
+                        $this->throwError(400, "The 'addresses' field was sent incorrectly in the request.");
                     }
                 }
             }
         }
-        if (array_key_exists('entitlements', $payload) && $payload['entitlements'] != "") {
+        if (array_key_exists('entitlements', $payload) && $payload['entitlements'] != '') {
             if (!is_array($payload['entitlements'])) {
-                exit($this->throwError(400, "The 'entitlements' field was sent incorrectly in the request."));
+                $this->throwError(400, "The 'entitlements' field was sent incorrectly in the request.");
             } else {
                 foreach ($payload['entitlements'] as $entitlements) {
                     if (!is_array($entitlements)) {
-                        exit($this->throwError(400, "The 'entitlements' field was sent incorrectly in the request."));
+                        $this->throwError(400, "The 'entitlements' field was sent incorrectly in the request.");
                     }
                 }
             }
         }
-        if (array_key_exists('roles', $payload) && $payload['roles'] != "") {
+        if (array_key_exists('roles', $payload) && $payload['roles'] != '') {
             if (!is_array($payload['roles'])) {
-                exit($this->throwError(400, "The 'roles' field was sent incorrectly in the request."));
+                $this->throwError(400, "The 'roles' field was sent incorrectly in the request.");
             } else {
                 foreach ($payload['roles'] as $roles) {
                     if (!is_array($roles)) {
-                        exit($this->throwError(400, "The 'roles' field was sent incorrectly in the request."));
+                        $this->throwError(400, "The 'roles' field was sent incorrectly in the request.");
                     }
                 }
             }
         }
         foreach ($payload as $key => $value) {
-            if (!in_array($key, array('schemas', 'id', 'externalId', 'meta', 'userName', 'name', 'displayName', 'nickName', 'profileUrl', 'title', 'userType', 'preferredLanguage', 'locale', 'timezone', 'active', 'password', 'emails', 'phoneNumbers', 'ims', 'photos', 'addresses', 'groups', 'entitlements', 'roles', 'x509Certificates')) && !in_array($key, $schemas)) {
-                exit($this->throwError(400, "The '" . htmlentities($key, ENT_QUOTES) . "' field must not be present in the request."));
+            if (!in_array($key, ['schemas', 'id', 'externalId', 'meta', 'userName', 'name', 'displayName', 'nickName', 'profileUrl', 'title', 'userType', 'preferredLanguage', 'locale', 'timezone', 'active', 'password', 'emails', 'phoneNumbers', 'ims', 'photos', 'addresses', 'groups', 'entitlements', 'roles', 'x509Certificates']) && !in_array($key, $schemas)) {
+                $this->throwError(400, "The '" . htmlentities($key, ENT_QUOTES) . "' field must not be present in the request.");
             }
         }
         // if ($payload['urn:ietf:params:scim:schemas:extension:enterprise:2.0:User'] != "")
@@ -621,7 +615,7 @@ class SCIM
         return $payload;
     }
 
-    public function createGroup($requestBody)
+    public function createGroup(string $requestBody): void
     {
         $requestBody = $this->parseGroupPayload(json_decode($requestBody, 1));
         $group = new Group();
@@ -630,7 +624,7 @@ class SCIM
             // if ($key == "schemas")
             //     foreach ($value as $val)
             //         $this->db->addResourceSchema($groupID, $val);
-            if (in_array($key, array('id', 'meta', 'schemas'))) {
+            if (in_array($key, ['id', 'meta', 'schemas'])) {
                 continue;
             }
             // if ($key == "members")
@@ -643,23 +637,21 @@ class SCIM
         $this->writeAudit('group.create', 'Group', $group->getId(), $group->getDisplayName());
         $payload = $group->toSCIM();
         unset($payload['_modified']);
-        header("Content-Type: application/scim+json", true, 201);
-        echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
+        $this->emitScim($payload, 201);
     }
 
 
-    public function getGroup($groupID, $isIncluded = '')
+    public function getGroup(string $groupID, string $isIncluded = ''): void
     {
         if (!$this->groupProvider->exists('id', $groupID)) {
-            exit($this->throwError(404, "This group does not exist."));
+            $this->throwError(404, 'This group does not exist.');
         }
         $group = $this->groupProvider->read('id', $groupID);
         $payload = $group->toSCIM(true);
-        header("Etag: " . $payload['meta']['version']);
-        header("Last-Modified: " . gmdate("D, d M Y H:i:s", $payload['etagLastModified']) . " GMT");
+        header('Etag: ' . $payload['meta']['version']);
+        header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $payload['etagLastModified']) . ' GMT');
         unset($payload['etagLastModified']);
-        header("Content-Type: application/scim+json", true, 200);
-        echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
+        $this->emitScim($payload);
 
         // if (!$this->db->groupExists($groupID, "2.0"))
         //     exit($this->throwError(404, "This group does not exist."));
@@ -703,18 +695,17 @@ class SCIM
         //     echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
     }
 
-    public function listGroups($options)
+    public function listGroups(array $options): void
     {
         $groups = $this->findByFilter($this->groupProvider, $options);
         $payload = $this->buildListResponse($groups, $options);
-        header('Content-Type: application/scim+json', true, 200);
-        echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
+        $this->emitScim($payload);
     }
 
-    public function patchGroup($requestBody, $groupID)
+    public function patchGroup(string $requestBody, string $groupID): void
     {
         if (!$this->groupProvider->exists('id', $groupID)) {
-            exit($this->throwError(404, "This group does not exist."));
+            $this->throwError(404, 'This group does not exist.');
         }
         $operations = $this->parsePatchPayload(json_decode($requestBody, 1));
         $group = $this->groupProvider->read('id', $groupID);
@@ -728,23 +719,22 @@ class SCIM
             $group = $this->groupProvider->update($group);
         } catch (Exception $e) {
             error_log('patchGroup failed: ' . $e->getMessage());
-            exit($this->throwError($this->statusForException($e->getMessage()), $this->messageForException($e->getMessage())));
+            $this->throwError($this->statusForException($e->getMessage()), $this->messageForException($e->getMessage()));
         }
         $this->writeAudit('group.patch', 'Group', $group->getId(), $group->getDisplayName());
         $payload = $group->toSCIM();
         unset($payload['_modified']);
-        header("Content-Type: application/scim+json", true, 200);
-        echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
+        $this->emitScim($payload);
     }
 
-    public function putGroup($requestBody, $groupID)
+    public function putGroup(string $requestBody, string $groupID): void
     {
         $requestBody = $this->parseGroupPayload(json_decode($requestBody, 1), true);
         $group = $this->groupProvider->read('id', $groupID);
         if ($this->groupProvider->exists('displayName', $requestBody['displayName'])) {
             $groupCheck = $this->groupProvider->read('displayName', $requestBody['displayName']);
-            if ($groupCheck->getId() != $group->getId()) {
-                exit($this->throwError(400, "The displayname has already been taken by another group."));
+            if ($groupCheck->getId() !== $group->getId()) {
+                $this->throwError(400, 'The displayname has already been taken by another group.');
             }
         }
         $attributes = [];
@@ -752,7 +742,7 @@ class SCIM
             // if ($key == "schemas")
             //     foreach ($value as $val)
             //         $this->db->addResourceSchema($groupID, $val);
-            if (in_array($key, array('id', 'meta', 'schemas'))) {
+            if (in_array($key, ['id', 'meta', 'schemas'])) {
                 continue;
             }
             // if ($key == "members") {
@@ -766,100 +756,99 @@ class SCIM
         $this->writeAudit('group.update', 'Group', $group->getId(), $group->getDisplayName());
         $payload = $group->toSCIM();
         unset($payload['_modified']);
-        header("Content-Type: application/scim+json", true, 200);
-        echo preg_replace('/[\x00-\x1F\x7F]/u', '', json_encode($payload, JSON_UNESCAPED_SLASHES));
+        $this->emitScim($payload);
     }
 
-    public function deleteGroup($groupID)
+    public function deleteGroup(string $groupID): void
     {
         if (!$this->groupProvider->exists('id', $groupID)) {
-            $this->throwError(404, "Group selected does not exist.");
+            $this->throwError(404, 'Group selected does not exist.');
         }
         $group = $this->groupProvider->read('id', $groupID);
-        if ($group->getDisplayName() == "Administrators") {
-            $this->throwError(403, "Forbidden");
+        if ($group->getDisplayName() === 'Administrators') {
+            $this->throwError(403, 'Forbidden');
         }
         $this->groupProvider->delete($groupID);
         $this->writeAudit('group.delete', 'Group', $groupID, $group->getDisplayName());
-        header("Content-Type: application/scim+json", true, 204);
+        header('Content-Type: application/scim+json', true, 204);
     }
 
-    private function parseGroupPayload($payload, $groupCheck = false)
+    private function parseGroupPayload(mixed $payload, bool $groupCheck = false): array
     {
         if (!$payload) {
-            exit($this->throwError(400, "Incorrect request was sent to the SCIM server."));
+            $this->throwError(400, 'Incorrect request was sent to the SCIM server.');
         }
-        if ($groupCheck == false) {
+        if ($groupCheck === false) {
             if (array_key_exists('displayName', $payload) && $this->groupProvider->exists('displayName', $payload['displayName'])) {
-                exit($this->throwError(409, "Group with displayname " . $payload['displayName'] . " already exists."));
+                $this->throwError(409, 'Group with displayname ' . $payload['displayName'] . ' already exists.');
             }
         }
-        if (empty($payload['schemas']) || !is_array($payload['schemas']) || !in_array("urn:ietf:params:scim:schemas:core:2.0:Group", $payload['schemas'])) {
-            exit($this->throwError(400, "Incorrect schema was provided in the request."));
+        if (empty($payload['schemas']) || !is_array($payload['schemas']) || !in_array('urn:ietf:params:scim:schemas:core:2.0:Group', $payload['schemas'])) {
+            $this->throwError(400, 'Incorrect schema was provided in the request.');
         }
         if (empty($payload['displayName'])) {
-            exit($this->throwError(400, "No displayName was provided in the request."));
+            $this->throwError(400, 'No displayName was provided in the request.');
         }
         return $payload;
     }
 
-    public function showServiceProviderConfig()
+    public function showServiceProviderConfig(): void
     {
         $payload = [];
-        $payload['schemas'] = array("urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig");
-        $payload['patch'] = array("supported" => true);
-        $payload['bulk'] = array("supported" => false, "maxOperations" => 0, "maxPayloadSize" => 0);
-        $payload['filter'] = array("supported" => true, "maxResults" => self::MAX_FILTER_RESULTS);
-        $payload['changePassword'] = array("supported" => true);
-        $payload['sort'] = array("supported" => false);
-        $payload['etag'] = array("supported" => true);
-        $payload['authenticationSchemes'] = array();
+        $payload['schemas'] = ['urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig'];
+        $payload['patch'] = ['supported' => true];
+        $payload['bulk'] = ['supported' => false, 'maxOperations' => 0, 'maxPayloadSize' => 0];
+        $payload['filter'] = ['supported' => true, 'maxResults' => self::MAX_FILTER_RESULTS];
+        $payload['changePassword'] = ['supported' => true];
+        $payload['sort'] = ['supported' => false];
+        $payload['etag'] = ['supported' => true];
+        $payload['authenticationSchemes'] = [];
         if ($this->bearerAuth->isConfigured()) {
-            $payload['authenticationSchemes'][] = array("name" => "OAuth Bearer Token", "description" => "Authentication scheme using the OAuth Bearer Token standard", "type" => "oauthbearertoken");
+            $payload['authenticationSchemes'][] = ['name' => 'OAuth Bearer Token', 'description' => 'Authentication scheme using the OAuth Bearer Token standard', 'type' => 'oauthbearertoken'];
         }
-        $payload['authenticationSchemes'][] = array("name" => "HTTP Basic", "description" => "Authentication Scheme using the Http Basic Standard", "type" => "httpbasic");
-        $payload['meta'] = array("resourceType" => "ServiceProviderConfig", "location" => $this->baseUrl() . "scim/ServiceProviderConfig");
+        $payload['authenticationSchemes'][] = ['name' => 'HTTP Basic', 'description' => 'Authentication Scheme using the Http Basic Standard', 'type' => 'httpbasic'];
+        $payload['meta'] = ['resourceType' => 'ServiceProviderConfig', 'location' => $this->baseUrl() . 'scim/ServiceProviderConfig'];
         $this->emitScim($payload);
     }
 
     // Returns the resource for the authenticated subject (RFC 7644 §3.11). Only
     // meaningful for a user-authenticated request (session / HTTP Basic); a
     // Bearer service token has no user to resolve, so /Me is a 404 there.
-    public function showMe()
+    public function showMe(): void
     {
         if (!$this->loggedInUser) {
-            $this->throwError(404, "No authenticated user is associated with this request.");
+            $this->throwError(404, 'No authenticated user is associated with this request.');
         }
         $payload = $this->loggedInUser->toSCIM(true);
-        header("Etag: " . $payload['meta']['version']);
-        header("Last-Modified: " . gmdate("D, d M Y H:i:s", $payload['etagLastModified']) . " GMT");
+        header('Etag: ' . $payload['meta']['version']);
+        header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $payload['etagLastModified']) . ' GMT');
         unset($payload['etagLastModified']);
         $this->emitScim($payload);
     }
 
     // Discovery: the resource types this provider exposes (RFC 7644 §4).
-    public function showResourceTypes($id)
+    public function showResourceTypes(?string $id): void
     {
-        $types = array(
-            'User' => array(
-                'schemas' => array('urn:ietf:params:scim:schemas:core:2.0:ResourceType'),
+        $types = [
+            'User' => [
+                'schemas' => ['urn:ietf:params:scim:schemas:core:2.0:ResourceType'],
                 'id' => 'User',
                 'name' => 'User',
                 'endpoint' => '/scim/users',
                 'description' => 'User Account',
                 'schema' => User::SCHEMA,
-                'meta' => array('resourceType' => 'ResourceType', 'location' => $this->baseUrl() . 'scim/ResourceTypes/User'),
-            ),
-            'Group' => array(
-                'schemas' => array('urn:ietf:params:scim:schemas:core:2.0:ResourceType'),
+                'meta' => ['resourceType' => 'ResourceType', 'location' => $this->baseUrl() . 'scim/ResourceTypes/User'],
+            ],
+            'Group' => [
+                'schemas' => ['urn:ietf:params:scim:schemas:core:2.0:ResourceType'],
                 'id' => 'Group',
                 'name' => 'Group',
                 'endpoint' => '/scim/groups',
                 'description' => 'Group',
                 'schema' => Group::SCHEMA,
-                'meta' => array('resourceType' => 'ResourceType', 'location' => $this->baseUrl() . 'scim/ResourceTypes/Group'),
-            ),
-        );
+                'meta' => ['resourceType' => 'ResourceType', 'location' => $this->baseUrl() . 'scim/ResourceTypes/Group'],
+            ],
+        ];
         if ($id !== null) {
             if (!array_key_exists($id, $types)) {
                 $this->throwError(404, "ResourceType '" . htmlentities((string) $id, ENT_QUOTES) . "' does not exist.");
@@ -873,47 +862,47 @@ class SCIM
     // Discovery: the schema definitions for the User and Group resources
     // (RFC 7643 §7). A compact-but-valid representation of the attributes this
     // implementation actually supports.
-    public function showSchemas($id)
+    public function showSchemas(?string $id): void
     {
-        $schemas = array(
-            User::SCHEMA => array(
-                'schemas' => array('urn:ietf:params:scim:schemas:core:2.0:Schema'),
+        $schemas = [
+            User::SCHEMA => [
+                'schemas' => ['urn:ietf:params:scim:schemas:core:2.0:Schema'],
                 'id' => User::SCHEMA,
                 'name' => 'User',
                 'description' => 'User Account',
-                'attributes' => array(
-                    $this->attributeDef('userName', 'string', array('required' => true, 'uniqueness' => 'server')),
-                    $this->attributeDef('name', 'complex', array('subAttributes' => array(
+                'attributes' => [
+                    $this->attributeDef('userName', 'string', ['required' => true, 'uniqueness' => 'server']),
+                    $this->attributeDef('name', 'complex', ['subAttributes' => [
                         $this->attributeDef('givenName', 'string'),
                         $this->attributeDef('familyName', 'string'),
-                    ))),
+                    ]]),
                     $this->attributeDef('displayName', 'string'),
                     $this->attributeDef('active', 'boolean'),
-                    $this->attributeDef('emails', 'complex', array('multiValued' => true, 'subAttributes' => array(
+                    $this->attributeDef('emails', 'complex', ['multiValued' => true, 'subAttributes' => [
                         $this->attributeDef('value', 'string'),
                         $this->attributeDef('type', 'string'),
                         $this->attributeDef('primary', 'boolean'),
-                    ))),
-                    $this->attributeDef('password', 'string', array('mutability' => 'writeOnly', 'returned' => 'never')),
-                ),
-                'meta' => array('resourceType' => 'Schema', 'location' => $this->baseUrl() . 'scim/Schemas/' . User::SCHEMA),
-            ),
-            Group::SCHEMA => array(
-                'schemas' => array('urn:ietf:params:scim:schemas:core:2.0:Schema'),
+                    ]]),
+                    $this->attributeDef('password', 'string', ['mutability' => 'writeOnly', 'returned' => 'never']),
+                ],
+                'meta' => ['resourceType' => 'Schema', 'location' => $this->baseUrl() . 'scim/Schemas/' . User::SCHEMA],
+            ],
+            Group::SCHEMA => [
+                'schemas' => ['urn:ietf:params:scim:schemas:core:2.0:Schema'],
                 'id' => Group::SCHEMA,
                 'name' => 'Group',
                 'description' => 'Group',
-                'attributes' => array(
-                    $this->attributeDef('displayName', 'string', array('required' => true)),
-                    $this->attributeDef('members', 'complex', array('multiValued' => true, 'subAttributes' => array(
+                'attributes' => [
+                    $this->attributeDef('displayName', 'string', ['required' => true]),
+                    $this->attributeDef('members', 'complex', ['multiValued' => true, 'subAttributes' => [
                         $this->attributeDef('value', 'string'),
                         $this->attributeDef('display', 'string'),
                         $this->attributeDef('$ref', 'reference'),
-                    ))),
-                ),
-                'meta' => array('resourceType' => 'Schema', 'location' => $this->baseUrl() . 'scim/Schemas/' . Group::SCHEMA),
-            ),
-        );
+                    ]]),
+                ],
+                'meta' => ['resourceType' => 'Schema', 'location' => $this->baseUrl() . 'scim/Schemas/' . Group::SCHEMA],
+            ],
+        ];
         if ($id !== null) {
             if (!array_key_exists($id, $schemas)) {
                 $this->throwError(404, "Schema '" . htmlentities((string) $id, ENT_QUOTES) . "' does not exist.");
@@ -925,9 +914,9 @@ class SCIM
     }
 
     // Builds a single SCIM attribute definition with sensible defaults.
-    private function attributeDef(string $name, string $type, array $overrides = array()): array
+    private function attributeDef(string $name, string $type, array $overrides = []): array
     {
-        return array_merge(array(
+        return array_merge([
             'name' => $name,
             'type' => $type,
             'multiValued' => false,
@@ -936,20 +925,20 @@ class SCIM
             'mutability' => 'readWrite',
             'returned' => 'default',
             'uniqueness' => 'none',
-        ), $overrides);
+        ], $overrides);
     }
 
     // Wraps a set of resources in a SCIM ListResponse (used by discovery
     // endpoints, which are not paginated).
     private function listResponse(array $resources): array
     {
-        return array(
-            'schemas' => array('urn:ietf:params:scim:api:messages:2.0:ListResponse'),
+        return [
+            'schemas' => ['urn:ietf:params:scim:api:messages:2.0:ListResponse'],
             'totalResults' => count($resources),
             'startIndex' => 1,
             'itemsPerPage' => count($resources),
             'Resources' => $resources,
-        );
+        ];
     }
 
     // The absolute base URL of this SCIM deployment, derived from the request
@@ -971,11 +960,12 @@ class SCIM
 
     // Runs an optional `attribute eq "value"` filter against a provider, or
     // returns all entries when no filter is supplied.
-    private function findByFilter($provider, $options): array
+    /** @param UserProviderInterface|GroupProviderInterface $provider */
+    private function findByFilter($provider, array $options): array
     {
         if (array_key_exists('filter', $options) && $options['filter'] !== '') {
             if (!str_contains($options['filter'], ' eq ')) {
-                exit($this->throwError(400, "Only the 'attribute eq \"value\"' filter is supported."));
+                $this->throwError(400, "Only the 'attribute eq \"value\"' filter is supported.");
             }
             list($attribute, $value) = explode(' eq ', $options['filter'], 2);
             $attribute = trim($attribute);
@@ -994,7 +984,7 @@ class SCIM
     // Builds a SCIM ListResponse, applying 1-based `startIndex` and `count`
     // pagination from the query options. `totalResults` always reflects the
     // full (filtered) result count before pagination.
-    private function buildListResponse(array $entries, $options): array
+    private function buildListResponse(array $entries, array $options): array
     {
         $total = count($entries);
         $startIndex = 1;
@@ -1018,40 +1008,40 @@ class SCIM
             unset($result['_modified']);
             $resources[] = $result;
         }
-        return array(
-            'schemas' => array('urn:ietf:params:scim:api:messages:2.0:ListResponse'),
+        return [
+            'schemas' => ['urn:ietf:params:scim:api:messages:2.0:ListResponse'],
             'totalResults' => $total,
             'startIndex' => $startIndex,
             'itemsPerPage' => count($resources),
             'Resources' => $resources,
-        );
+        ];
     }
 
     // Validates a SCIM PatchOp body and returns its Operations list.
-    private function parsePatchPayload($payload): array
+    private function parsePatchPayload(mixed $payload): array
     {
         if (!$payload || !is_array($payload)) {
-            exit($this->throwError(400, "Incorrect request was sent to the SCIM server."));
+            $this->throwError(400, 'Incorrect request was sent to the SCIM server.');
         }
-        if (empty($payload['schemas']) || !is_array($payload['schemas']) || !in_array("urn:ietf:params:scim:api:messages:2.0:PatchOp", $payload['schemas'])) {
-            exit($this->throwError(400, "The PATCH request must use the PatchOp schema."));
+        if (empty($payload['schemas']) || !is_array($payload['schemas']) || !in_array('urn:ietf:params:scim:api:messages:2.0:PatchOp', $payload['schemas'])) {
+            $this->throwError(400, 'The PATCH request must use the PatchOp schema.');
         }
         if (!array_key_exists('Operations', $payload) || !is_array($payload['Operations']) || count($payload['Operations']) === 0) {
-            exit($this->throwError(400, "The PATCH request did not contain any Operations."));
+            $this->throwError(400, 'The PATCH request did not contain any Operations.');
         }
         foreach ($payload['Operations'] as $operation) {
             if (!is_array($operation) || !array_key_exists('op', $operation)) {
-                exit($this->throwError(400, "Each PATCH operation must define an 'op'."));
+                $this->throwError(400, "Each PATCH operation must define an 'op'.");
             }
         }
         return $payload['Operations'];
     }
 
-    private function applyUserAddReplace($user, $userID, $path, $value): void
+    private function applyUserAddReplace(User $user, string $userID, mixed $path, mixed $value): void
     {
         if ($path === null || $path === '') {
             if (!is_array($value)) {
-                exit($this->throwError(400, "A PATCH add/replace without a path requires an object value."));
+                $this->throwError(400, 'A PATCH add/replace without a path requires an object value.');
             }
             foreach ($value as $attributePath => $attributeValue) {
                 $this->setUserAttribute($user, $userID, $attributePath, $attributeValue);
@@ -1061,7 +1051,7 @@ class SCIM
         $this->setUserAttribute($user, $userID, $path, $value);
     }
 
-    private function applyUserRemove($user, $path): void
+    private function applyUserRemove(User $user, mixed $path): void
     {
         switch ($path) {
             case 'displayName':
@@ -1083,18 +1073,18 @@ class SCIM
                 $user->setActive(false);
                 break;
             default:
-                exit($this->throwError(400, "The attribute '" . htmlentities((string) $path, ENT_QUOTES) . "' cannot be removed via PATCH."));
+                $this->throwError(400, "The attribute '" . htmlentities((string) $path, ENT_QUOTES) . "' cannot be removed via PATCH.");
         }
     }
 
-    private function setUserAttribute($user, $userID, $path, $value): void
+    private function setUserAttribute(User $user, string $userID, mixed $path, mixed $value): void
     {
         switch ($path) {
             case 'userName':
                 if ($this->userProvider->exists('userName', $value)) {
                     $existing = $this->userProvider->read('userName', $value);
-                    if ($existing->getId() != $userID) {
-                        exit($this->throwError(400, "The username has already been taken by another user."));
+                    if ($existing->getId() !== $userID) {
+                        $this->throwError(400, 'The username has already been taken by another user.');
                     }
                 }
                 $user->setUserName($value);
@@ -1121,11 +1111,11 @@ class SCIM
                 $user->setEmail($this->extractEmail($value));
                 break;
             default:
-                exit($this->throwError(400, "The attribute '" . htmlentities((string) $path, ENT_QUOTES) . "' cannot be modified via PATCH."));
+                $this->throwError(400, "The attribute '" . htmlentities((string) $path, ENT_QUOTES) . "' cannot be modified via PATCH.");
         }
     }
 
-    private function extractEmail($value): string
+    private function extractEmail(mixed $value): string
     {
         if (is_array($value)) {
             $first = $value[0] ?? $value;
@@ -1140,7 +1130,7 @@ class SCIM
         return (string) $value;
     }
 
-    private function applyGroupOperation($group, $groupID, $op, $path, $value): void
+    private function applyGroupOperation(Group $group, string $groupID, string $op, mixed $path, mixed $value): void
     {
         $targetsMembers = false;
         $memberFilterId = null;
@@ -1177,7 +1167,7 @@ class SCIM
                     }
                     break;
                 default:
-                    exit($this->throwError(400, "Unsupported PATCH operation '" . htmlentities((string) $op, ENT_QUOTES) . "'."));
+                    $this->throwError(400, "Unsupported PATCH operation '" . htmlentities((string) $op, ENT_QUOTES) . "'.");
             }
             return;
         }
@@ -1189,7 +1179,7 @@ class SCIM
             }
             if ($path === null || $path === '') {
                 if (!is_array($value)) {
-                    exit($this->throwError(400, "A PATCH add/replace without a path requires an object value."));
+                    $this->throwError(400, 'A PATCH add/replace without a path requires an object value.');
                 }
                 foreach ($value as $attribute => $attributeValue) {
                     if ($attribute === 'displayName') {
@@ -1197,20 +1187,21 @@ class SCIM
                     } elseif ($attribute === 'members') {
                         $group->setMembers($this->extractMemberIds($attributeValue));
                     } else {
-                        exit($this->throwError(400, "The attribute '" . htmlentities((string) $attribute, ENT_QUOTES) . "' cannot be modified via PATCH."));
+                        $this->throwError(400, "The attribute '" . htmlentities((string) $attribute, ENT_QUOTES) . "' cannot be modified via PATCH.");
                     }
                 }
                 return;
             }
-            exit($this->throwError(400, "The attribute '" . htmlentities((string) $path, ENT_QUOTES) . "' cannot be modified via PATCH."));
+            $this->throwError(400, "The attribute '" . htmlentities((string) $path, ENT_QUOTES) . "' cannot be modified via PATCH.");
         }
 
-        exit($this->throwError(400, "Unsupported PATCH operation '" . htmlentities((string) $op, ENT_QUOTES) . "' for path '" . htmlentities((string) $path, ENT_QUOTES) . "'."));
+        $this->throwError(400, "Unsupported PATCH operation '" . htmlentities((string) $op, ENT_QUOTES) . "' for path '" . htmlentities((string) $path, ENT_QUOTES) . "'.");
     }
 
     // Normalizes a SCIM `members` value (list of {value:...} objects, a single
     // such object, or plain id strings) into a flat array of member ids.
-    private function extractMemberIds($value): array
+    /** @param array<int, array{value: string}|string>|array{value: string}|string|null $value */
+    private function extractMemberIds(mixed $value): array
     {
         $ids = [];
         if (is_array($value)) {
@@ -1231,24 +1222,24 @@ class SCIM
         return $ids;
     }
 
-    private function setGroupDisplayName($group, $groupID, $value): void
+    private function setGroupDisplayName(Group $group, string $groupID, mixed $value): void
     {
         if (!is_string($value) || $value === '') {
-            exit($this->throwError(400, "The 'displayName' value is invalid."));
+            $this->throwError(400, "The 'displayName' value is invalid.");
         }
         if ($group->getDisplayName() === 'Administrators' && $value !== 'Administrators') {
-            exit($this->throwError(403, "The Administrators group cannot be renamed."));
+            $this->throwError(403, 'The Administrators group cannot be renamed.');
         }
         if ($this->groupProvider->exists('displayName', $value)) {
             $existing = $this->groupProvider->read('displayName', $value);
-            if ($existing->getId() != $groupID) {
-                exit($this->throwError(400, "The displayname has already been taken by another group."));
+            if ($existing->getId() !== $groupID) {
+                $this->throwError(400, 'The displayname has already been taken by another group.');
             }
         }
         $group->setDisplayName($value);
     }
 
-    private function toBool($value): bool
+    private function toBool(mixed $value): bool
     {
         if (is_bool($value)) {
             return $value;
@@ -1257,7 +1248,7 @@ class SCIM
             return $value === 1;
         }
         if (is_string($value)) {
-            return in_array(strtolower($value), array('1', 'true', 'yes', 'on'), true);
+            return in_array(strtolower($value), ['1', 'true', 'yes', 'on'], true);
         }
         return (bool) $value;
     }
@@ -1276,15 +1267,15 @@ class SCIM
         }
     }
 
-    public function throwError($statusCode, $description)
+    public function throwError(int $statusCode, string $description): never
     {
-        header("Content-Type: application/scim+json", true, $statusCode);
+        header('Content-Type: application/scim+json', true, $statusCode);
         exit(json_encode(
-            array(
-                'schemas' => array("urn:ietf:params:scim:api:messages:2.0:Error"),
+            [
+                'schemas' => ['urn:ietf:params:scim:api:messages:2.0:Error'],
                 'detail' => $description,
                 'status' => $statusCode
-            )
+            ]
         ));
     }
 
@@ -1295,7 +1286,7 @@ class SCIM
     {
         $https = Utils::isHttps();
         if ($this->requireHttps && !$https) {
-            $this->throwError(403, "HTTPS is required. This request was refused because it was made over plaintext HTTP.");
+            $this->throwError(403, 'HTTPS is required. This request was refused because it was made over plaintext HTTP.');
         }
         if ($https && $this->hstsMaxAge > 0) {
             $header = 'Strict-Transport-Security: max-age=' . $this->hstsMaxAge;
@@ -1314,7 +1305,7 @@ class SCIM
         if (!$this->auditLog->isEnabled()) {
             return;
         }
-        $this->auditLog->record(array(
+        $this->auditLog->record([
             'actor' => $this->auditActor,
             'actorType' => $this->auditActorType,
             'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
@@ -1323,7 +1314,7 @@ class SCIM
             'targetId' => $targetId,
             'target' => $target,
             'outcome' => 'success',
-        ));
+        ]);
     }
 
     // Maps a domain/validation exception code to a client-safe message so PATCH
@@ -1332,23 +1323,23 @@ class SCIM
     {
         switch ($code) {
             case 'EXCEPTION_USER_ALREADY_EXIST':
-                return "A user with that username already exists.";
+                return 'A user with that username already exists.';
             case 'EXCEPTION_GROUP_ALREADY_EXIST':
-                return "A group with that display name already exists.";
+                return 'A group with that display name already exists.';
             case 'EXCEPTION_DUPLICATE_EMAIL':
-                return "A user with that email already exists.";
+                return 'A user with that email already exists.';
             case 'EXCEPTION_INVALID_EMAIL':
                 return "The 'emails' value is not a valid email address.";
             case 'EXCEPTION_INVALID_USER_NAME':
                 return "The 'userName' value contains invalid characters.";
             case 'EXCEPTION_INVALID_PASSWORD':
-                return "The 'password' must be between " . User::PASSWORD_MIN_LENGTH . " and " . User::PASSWORD_MAX_LENGTH . " characters.";
+                return "The 'password' must be between " . User::PASSWORD_MIN_LENGTH . ' and ' . User::PASSWORD_MAX_LENGTH . ' characters.';
             case 'EXCEPTION_ENTRY_NOT_EXIST':
-                return "The requested resource does not exist.";
+                return 'The requested resource does not exist.';
             case 'EXCEPTION_EMPTY_ID':
-                return "A required id value was empty.";
+                return 'A required id value was empty.';
             default:
-                return "The request could not be completed.";
+                return 'The request could not be completed.';
         }
     }
 
@@ -1369,7 +1360,7 @@ class SCIM
 
         register_shutdown_function(function () {
             $error = error_get_last();
-            $fatal = array(E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR);
+            $fatal = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
             if ($error !== null && in_array($error['type'], $fatal, true)) {
                 error_log('SCIM fatal error: ' . $error['message'] . ' in ' . $error['file'] . ':' . $error['line']);
                 $this->emitInternalError();
@@ -1384,11 +1375,11 @@ class SCIM
         if (headers_sent()) {
             return;
         }
-        header("Content-Type: application/scim+json", true, 500);
-        echo json_encode(array(
-            'schemas' => array("urn:ietf:params:scim:api:messages:2.0:Error"),
+        header('Content-Type: application/scim+json', true, 500);
+        echo json_encode([
+            'schemas' => ['urn:ietf:params:scim:api:messages:2.0:Error'],
             'detail' => 'An internal server error occurred.',
             'status' => 500
-        ));
+        ]);
     }
 }

@@ -2,44 +2,40 @@
 
 namespace VoltCMS\UserAccess;
 
-use \Exception;
+use Exception;
 
 class SessionAuth
 {
+    public const HTTP_REFERER = 'HTTP_REFERER';
+    public const HTTP_X_CSRF_TOKEN = 'HTTP_X_CSRF_TOKEN';
+    public const UA_AUTH = 'UA_AUTH';
+    public const UA_USERNAME = 'UA_USERNAME';
+    public const UA_DISPLAYNAME = 'UA_DISPLAYNAME';
+    public const UA_EMAIL = 'UA_EMAIL';
+    public const UA_ATTEMPTS = 'UA_ATTEMPTS';
+    public const UA_REFRESH = 'UA_REFRESH';
+    public const UA_CSRF = 'X-CSRF-Token';
 
-    const HTTP_REFERER = 'HTTP_REFERER';
-    const HTTP_X_CSRF_TOKEN = 'HTTP_X_CSRF_TOKEN';
-    const UA_AUTH = 'UA_AUTH';
-    const UA_USERNAME = 'UA_USERNAME';
-    const UA_DISPLAYNAME = 'UA_DISPLAYNAME';
-    const UA_EMAIL = 'UA_EMAIL';
-    const UA_ATTEMPTS = 'UA_ATTEMPTS';
-    const UA_REFRESH = 'UA_REFRESH';
-    const UA_CSRF = 'X-CSRF-Token';
+    public const SESSION_REFRESH_TIME = 60;
 
-    const SESSION_REFRESH_TIME = 60;
+    private static ?SessionAuth $instance = null;
 
-    // private static ?SessionAuth $instance = null;
-    // private ?User $loggedInUser = null;
-
-    private static $instance = null;
-
-    private $now = 0;
-    private $userProvider = null;
-    private $groupProvider = null;
-    private $loggedInUser = null;
-    private $maxLoginAttempts = 10;
-    private $refreshTime = 60;
-    private $throttle = null;
+    private int $now = 0;
+    private ?UserProviderInterface $userProvider = null;
+    private ?GroupProviderInterface $groupProvider = null;
+    private ?User $loggedInUser = null;
+    private int $maxLoginAttempts = 10;
+    private int $refreshTime = 60;
+    private ?LoginThrottle $throttle = null;
 
     // public static function getInstance(array $userProvider): SessionAuth {
     public static function getInstance($userProvider, $groupProvider, $maxLoginAttempts = 10, $refreshTime = 60): SessionAuth
     {
         if (empty($userProvider)) {
-            throw new Exception("User Provider cannot be empty");
+            throw new Exception('User Provider cannot be empty');
         }
         if (empty($groupProvider)) {
-            throw new Exception("Group Provider cannot be empty");
+            throw new Exception('Group Provider cannot be empty');
         }
         if (self::$instance === null) {
             self::$instance = new self();
@@ -60,23 +56,23 @@ class SessionAuth
     private function __construct()
     {}
 
-    private function __clone()
+    private function __clone(): void
     {}
 
-    public function __wakeup()
+    public function __wakeup(): void
     {
-        throw new Exception("Cannot unserialize SessionAuth");
+        throw new Exception('Cannot unserialize SessionAuth');
     }
 
     private function startSession(): void
     {
         if (session_status() === PHP_SESSION_NONE) {
-            $session_settings = [
+            $sessionSettings = [
                 'httponly' => true,
                 'samesite' => 'Strict',
                 'secure' => Utils::isHttps(),
             ];
-            session_set_cookie_params($session_settings);
+            session_set_cookie_params($sessionSettings);
             session_start();
         }
         if (session_status() === PHP_SESSION_ACTIVE) {
@@ -127,19 +123,19 @@ class SessionAuth
     {
         if (strpos($userName, '@') !== false) {
             $users = $userProvider->find('email', $userName);
-            if (!empty($users) && count($users) == 1) {
+            if (!empty($users) && count($users) === 1) {
                 return $users[0];
             }
         } else {
             $users = $userProvider->find('userName', $userName);
-            if (!empty($users) && count($users) == 1) {
+            if (!empty($users) && count($users) === 1) {
                 return $users[0];
             }
         }
         return null;
     }
 
-    private function setSessionInfo(?User $user, int $loginAttempts)
+    private function setSessionInfo(?User $user, int $loginAttempts): void
     {
         if ($user !== null) {
             $_SESSION[self::UA_AUTH] = true;
@@ -157,7 +153,7 @@ class SessionAuth
         self::$instance->loggedInUser = $user;
     }
 
-    public function login(string $userName, string $password, ?string $csrf_token = null): bool
+    public function login(string $userName, string $password, ?string $csrfToken = null): bool
     {
         $result = false;
         $attempted = false;
@@ -176,7 +172,7 @@ class SessionAuth
                 $user = $this->get($userName);
                 if ($user !== null && $user->isActive() && $_SESSION[self::UA_ATTEMPTS] < $this->maxLoginAttempts + 1) {
                     if ($user->verifyPassword($password)) {
-                        if (empty($csrf_token) || hash_equals($_SESSION[self::UA_CSRF], $csrf_token)) {
+                        if (empty($csrfToken) || hash_equals($_SESSION[self::UA_CSRF], $csrfToken)) {
                             // Prevent session fixation: issue a fresh session id on
                             // privilege change (successful authentication).
                             if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
@@ -248,14 +244,14 @@ class SessionAuth
         }
     }
 
-    public function logout()
+    public function logout(): void
     {
         if ($this->isLoggedIn()) {
             $this->setSessionInfo(null, 0);
         }
     }
 
-    private function setHeader(string $key, string $value)
+    private function setHeader(string $key, string $value): void
     {
         header($key . ': ' . $value);
     }
@@ -273,21 +269,17 @@ class SessionAuth
         }
     }
 
-    public function isMemberOfGroup($required_group)
+    public function isMemberOfGroup($requiredGroup): bool
     {
-        $required_groups = Sanitizer::sanitizeString($required_group);
+        $requiredGroups = Sanitizer::sanitizeString($requiredGroup);
         $loggedInUser = $this->getLoggedInUser();
-        if (!empty($required_groups[0]) && $loggedInUser && $loggedInUser->isMemberOf($required_group)) {
-            return true;
-        } else {
-            return false;
-        }
+        return !empty($requiredGroups[0]) && $loggedInUser && $loggedInUser->isMemberOf($requiredGroup);
     }
 
-    public function enforceMemberOfGroup($required_group)
+    public function enforceMemberOfGroup($requiredGroup): void
     {
         $this->enforceLoggedIn();
-        if (!$this->isMemberOfGroup($required_group)) {
+        if (!$this->isMemberOfGroup($requiredGroup)) {
             http_response_code(401);
             $this->echoJsonLoginInfo();
             exit();
