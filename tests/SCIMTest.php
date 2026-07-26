@@ -174,11 +174,15 @@ class SCIMTest extends TestCase
             ->with('id', $groupID)
             ->willReturn($group);
 
+        // putGroup checks the target id exists (so an unknown id is a 404 rather
+        // than a 500 out of read()), then checks no *other* group already holds
+        // the new display name.
         $this->groupProviderMock
-            ->expects($this->once())
+            ->expects($this->exactly(2))
             ->method('exists')
-            ->with('displayName', 'Updated Group')
-            ->willReturn(false);
+            ->willReturnCallback(function (string $attribute, string $value) use ($groupID): bool {
+                return $attribute === 'id' && $value === $groupID;
+            });
 
         $this->groupProviderMock
             ->expects($this->once())

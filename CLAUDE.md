@@ -57,8 +57,8 @@ the `Utils`/`SessionAuth::getInstance` params, `$_created`/`$_modified` and `Loc
 **Errors — two layers, don't mix them.** Domain code throws `\Exception` with a stable `EXCEPTION_*` string as the message; `SCIM`
 converts it to a SCIM error body. A provider never emits HTTP; a handler never lets an `EXCEPTION_*` code reach the client. Call
 `throwError()` bare — it already `exit()`s. Every new `EXCEPTION_*` needs a `messageForException()` arm (plus `statusForException()`
-when it isn't a 400). Wrap entity + provider calls in a handler try/catch — `createGroup`/`putGroup` still don't, so a duplicate
-display name 500s instead of 409ing (TODO.md). Emit all SCIM bodies through `emitScim()`.
+when it isn't a 400). Wrap entity + provider calls in a handler try/catch, and check a target exists before `read()`ing it — every
+create/put/patch handler now does both, so no domain fault escapes as a 500. Emit all SCIM bodies through `emitScim()`.
 
 **Comments.** `//` above the declaration, explaining *why*. The only docblocks in `src/` are four array-shape annotations — an
 ambiguous `array` shape is the one case worth one. Never add new commented-out code; the existing blocks (`RestApp`, the dead bodies

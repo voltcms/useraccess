@@ -6,17 +6,18 @@ been dropped — git history is the record.
 
 ## Correctness
 
-- [ ] **`createGroup` / `putGroup` don't map domain exceptions.** Both call `fromSCIM()` + the provider
-  unguarded, so a duplicate `displayName` escapes to the global handler as a 500 instead of the 409 that
-  `createUser` / `putUser` / `patch*` return. Wrap them in the same try/catch and reuse
-  `statusForException()` / `messageForException()`.
-- [ ] **`Utils::getBoolean()` only accepts the literal `'True'`**, and compares with `==`. `'true'`, `'1'` and
-  `true` all yield `false`. It feeds `protectPage()`'s `$loginRedirect` / `$forbiddenRedirect` flags, so a
-  host passing a lowercase string silently loses the redirect. Fixing it changes behavior for existing
-  callers — needs a deliberate call, not a drive-by patch.
+- [x] **`createGroup` / `putGroup` map domain exceptions.** Both now wrap `fromSCIM()` + the provider call in
+  the same try/catch `createUser` / `putUser` / `patch*` use, so a lost display-name race is a 409 and an
+  empty member id a 400 rather than a 500. `putGroup` also checks the id exists before `read()`ing it, which
+  turns an unknown group into a 404 instead of a 500.
+- [x] **`Utils::getBoolean()` accepts the usual truthy spellings.** It now takes `true`/`yes`/`on`/`1` in any
+  casing (trimmed), plus real booleans and `int` 1, instead of only the literal string `'True'` under `==`.
 - [ ] **`Utils::setHeader()` is dead code** duplicating `SessionAuth`'s private copy (no callers anywhere in
   `src/`, `tests/` or `demo/`). It is published API, so removal is a BC break; decide whether to deprecate it
   for the next major or keep it.
+- [ ] **SCIM error paths are untestable.** `throwError()` ends in `exit()`, so no test can assert a 4xx body —
+  which is why the suite has zero error-path tests and the two fixes above are covered only by their success
+  paths. Making it throw a dedicated exception that `runRouter()` converts would open all of them up.
 
 ## Data integrity
 

@@ -647,8 +647,18 @@ class SCIM
             //         $this->db->addGroupMember($groupID, $member['value']);
             $attributes[$key] = $value;
         }
-        $group->fromSCIM($attributes);
-        $group = $this->groupProvider->create($group);
+        try {
+            // fromSCIM runs the entity setters, which validate and throw
+            // EXCEPTION_* codes (an empty member id, for instance); create()
+            // throws on a display name that was taken between parseGroupPayload's
+            // check and this write. Keep both inside the try so they become clean
+            // 4xx responses instead of an uncaught 500.
+            $group->fromSCIM($attributes);
+            $group = $this->groupProvider->create($group);
+        } catch (Exception $e) {
+            error_log('createGroup failed: ' . $e->getMessage());
+            $this->throwError($this->statusForException($e->getMessage()), $this->messageForException($e->getMessage()));
+        }
         $this->writeAudit('group.create', 'Group', $group->getId(), $group->getDisplayName());
         $payload = $group->toSCIM();
         unset($payload['_modified']);
@@ -745,6 +755,11 @@ class SCIM
     public function putGroup(string $requestBody, string $groupID): void
     {
         $requestBody = $this->parseGroupPayload(json_decode($requestBody, 1), true);
+        // Check existence before reading: read() throws EXCEPTION_ENTRY_NOT_EXIST
+        // for an unknown id, which would surface as a 500 rather than a 404.
+        if (!$this->groupProvider->exists('id', $groupID)) {
+            $this->throwError(404, 'This group does not exist.');
+        }
         $group = $this->groupProvider->read('id', $groupID);
         if ($this->groupProvider->exists('displayName', $requestBody['displayName'])) {
             $groupCheck = $this->groupProvider->read('displayName', $requestBody['displayName']);
@@ -766,8 +781,13 @@ class SCIM
             // }
             $attributes[$key] = $value;
         }
-        $group->fromSCIM($attributes);
-        $group = $this->groupProvider->update($group);
+        try {
+            $group->fromSCIM($attributes);
+            $group = $this->groupProvider->update($group);
+        } catch (Exception $e) {
+            error_log('putGroup failed: ' . $e->getMessage());
+            $this->throwError($this->statusForException($e->getMessage()), $this->messageForException($e->getMessage()));
+        }
         $this->writeAudit('group.update', 'Group', $group->getId(), $group->getDisplayName());
         $payload = $group->toSCIM();
         unset($payload['_modified']);
