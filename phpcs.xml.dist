@@ -4,10 +4,14 @@
         Lightweight coding-standard checks for the UserAccess library. Kept
         intentionally narrow so it enforces the conventions the codebase already
         follows (no tabs, unix line endings, no trailing whitespace, files end in
-        a newline, long-form open tags) without imposing a wholesale reformat.
+        a newline, long-form open tags, lowercase keywords) without imposing a
+        wholesale reformat. Rules such as short array syntax and no-leading-
+        backslash imports are deliberately absent: they are phpcbf-fixable but
+        would land as one large diff, so CLAUDE.md keeps them as review guidance.
     </description>
 
     <file>src</file>
+    <file>tests</file>
 
     <arg name="colors"/>
     <arg value="sp"/>
@@ -16,6 +20,13 @@
 
     <rule ref="Generic.PHP.DisallowShortOpenTag"/>
     <rule ref="Generic.Files.ByteOrderMark"/>
+    <!-- These three already hold across src/ and tests/; they pin down the
+         `CONST` / `TRUE` / `array()` drift the standards pass cleaned up so it
+         cannot creep back in. The remaining long-array calls live in demo/,
+         which this ruleset does not cover. -->
+    <rule ref="Generic.PHP.LowerCaseKeyword"/>
+    <rule ref="Generic.PHP.LowerCaseConstant"/>
+    <rule ref="Generic.Arrays.DisallowLongArraySyntax"/>
     <rule ref="Generic.Files.LineEndings">
         <properties>
             <property name="eolChar" value="\n"/>
