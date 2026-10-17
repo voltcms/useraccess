@@ -28,6 +28,7 @@ class PasskeyAuthTest extends TestCase
     private GroupProvider $groupProvider;
     private PasskeyProvider $passkeyProvider;
     private PasskeyAuth $passkeyAuth;
+    private SessionAuth $sessionAuth;
     private User $user;
     private ?array $sessionBackup;
     private array $serverBackup;
@@ -44,19 +45,35 @@ class PasskeyAuthTest extends TestCase
         $this->passkeyProvider->deleteAll();
         $this->user = $this->createUser('passkeyuser');
         $this->passkeyAuth = new PasskeyAuth($this->userProvider, $this->passkeyProvider, self::RP_ID, 'Test', [self::ORIGIN]);
+        // Adding a passkey needs a recent sign-in, so every test starts signed
+        // in with the password, through a SessionAuth built on these providers.
+        self::resetSessionAuth();
+        $this->sessionAuth = SessionAuth::getInstance($this->userProvider, $this->groupProvider);
+        $this->sessionAuth->login('passkeyuser', 'password');
     }
 
     protected function tearDown(): void
     {
         $this->passkeyProvider->deleteAll();
         $this->userProvider->deleteAll();
-        // loginWithPasskey() tests build SessionAuth with these providers; drop
-        // the singleton so it does not leak into other test classes.
-        $instance = new ReflectionProperty(SessionAuth::class, 'instance');
-        $instance->setValue(null, null);
+        // Drop the SessionAuth singleton so these providers do not leak into
+        // other test classes.
+        self::resetSessionAuth();
         // A session another test starts expects $_SESSION to be an array.
         $_SESSION = $this->sessionBackup ?? [];
         $_SERVER = $this->serverBackup;
+    }
+
+    private static function resetSessionAuth(): void
+    {
+        $instance = new ReflectionProperty(SessionAuth::class, 'instance');
+        $instance->setValue(null, null);
+    }
+
+    // Moves the session's last sign-in back in time, past a window of $seconds.
+    private static function ageAuthentication(int $seconds): void
+    {
+        $_SESSION[SessionAuth::UA_AUTHENTICATED]['time'] = time() - $seconds - 1;
     }
 
     private function createUser(string $userName): User
@@ -441,38 +458,107 @@ class PasskeyAuthTest extends TestCase
         $this->assertSame('passkeyuser', $registered['actor']);
         $this->assertSame('203.0.113.7', $registered['ip']);
         $this->assertSame('Phone', $registered['target']);
+        $this->assertSame('passkeyuser', $registered['owner']);
         $this->assertSame('passkey.delete', json_decode($lines[1], true)['action']);
+    }
+
+    public function testDeletionByAnAdministratorIsAuditedWithTheAdministratorAsActor(): void
+    {
+        $directory = sys_get_temp_dir() . '/ua_passkey_audit_' . uniqid();
+        $this->passkeyAuth->setAuditLog(new AuditLog($directory));
+        $credential = $this->registerPasskey('Lost phone');
+        $admin = $this->createUser('adminuser');
+
+        $this->passkeyAuth->deletePasskey($this->user, $credential['passkey']->getId(), $admin);
+
+        $this->assertSame([], $this->passkeyAuth->getPasskeys($this->user));
+        $deleted = json_decode(file($directory . '/audit.log', FILE_IGNORE_NEW_LINES)[1], true);
+        $this->assertSame('passkey.delete', $deleted['action']);
+        $this->assertSame('adminuser', $deleted['actor']);
+        $this->assertSame('passkeyuser', $deleted['owner']);
+        $this->assertSame('Lost phone', $deleted['target']);
+    }
+
+    public function testRegistrationNeedsARecentSignIn(): void
+    {
+        self::ageAuthentication(PasskeyAuth::DEFAULT_REAUTHENTICATION_WINDOW);
+
+        $this->expectExceptionMessage('EXCEPTION_PASSKEY_REAUTHENTICATION_REQUIRED');
+        $this->passkeyAuth->getRegistrationOptions($this->user);
+    }
+
+    public function testRegistrationNeedsASignedInUser(): void
+    {
+        $this->sessionAuth->logout();
+
+        $this->expectExceptionMessage('EXCEPTION_PASSKEY_REAUTHENTICATION_REQUIRED');
+        $this->passkeyAuth->getRegistrationOptions($this->user);
+    }
+
+    public function testAnotherUsersSignInDoesNotCount(): void
+    {
+        $other = $this->createUser('otheruser');
+
+        $this->expectExceptionMessage('EXCEPTION_PASSKEY_REAUTHENTICATION_REQUIRED');
+        $this->passkeyAuth->getRegistrationOptions($other);
+    }
+
+    public function testReauthenticationWindowIsConfigurable(): void
+    {
+        self::ageAuthentication(60);
+        $this->passkeyAuth->setReauthenticationWindow(60);
+
+        $this->expectExceptionMessage('EXCEPTION_PASSKEY_REAUTHENTICATION_REQUIRED');
+        $this->passkeyAuth->getRegistrationOptions($this->user);
+    }
+
+    public function testConfirmingThePasswordAllowsRegistrationAgain(): void
+    {
+        self::ageAuthentication(PasskeyAuth::DEFAULT_REAUTHENTICATION_WINDOW);
+
+        $this->assertTrue($this->sessionAuth->confirmPassword('password'));
+        $options = $this->passkeyAuth->getRegistrationOptions($this->user);
+        $this->assertSame(self::RP_ID, $options['rp']['id']);
+    }
+
+    public function testPasskeySignInCountsAsARecentSignIn(): void
+    {
+        $credential = $this->registerPasskey();
+        $this->sessionAuth->logout();
+        $this->sessionAuth->loginWithPasskey($this->passkeyAuth, $this->signAssertion($this->passkeyAuth->getLoginOptions(), $credential));
+
+        $options = $this->passkeyAuth->getRegistrationOptions($this->user);
+        $this->assertCount(1, $options['excludeCredentials']);
     }
 
     public function testLoginWithPasskeyOpensASession(): void
     {
-        $sessionAuth = SessionAuth::getInstance($this->userProvider, $this->groupProvider);
         $credential = $this->registerPasskey();
+        $this->sessionAuth->logout();
         $assertion = $this->signAssertion($this->passkeyAuth->getLoginOptions(), $credential);
 
-        $this->assertTrue($sessionAuth->loginWithPasskey($this->passkeyAuth, $assertion, $sessionAuth->getCsrfToken()));
-        $this->assertTrue($sessionAuth->isLoggedIn());
+        $this->assertTrue($this->sessionAuth->loginWithPasskey($this->passkeyAuth, $assertion, $this->sessionAuth->getCsrfToken()));
+        $this->assertTrue($this->sessionAuth->isLoggedIn());
         $this->assertSame('passkeyuser', $_SESSION[SessionAuth::UA_USERNAME]);
     }
 
     public function testFailedPasskeyLoginLeavesTheSessionLoggedOut(): void
     {
-        $sessionAuth = SessionAuth::getInstance($this->userProvider, $this->groupProvider);
         $credential = $this->registerPasskey();
         $assertion = $this->signAssertion($this->passkeyAuth->getLoginOptions(), $credential, 1, 'https://evil.example');
 
-        $this->assertFalse($sessionAuth->loginWithPasskey($this->passkeyAuth, $assertion));
-        $this->assertFalse($sessionAuth->isLoggedIn());
+        $this->assertFalse($this->sessionAuth->loginWithPasskey($this->passkeyAuth, $assertion));
+        $this->assertFalse($this->sessionAuth->isLoggedIn());
     }
 
     public function testPasskeyLoginChecksTheCsrfToken(): void
     {
-        $sessionAuth = SessionAuth::getInstance($this->userProvider, $this->groupProvider);
         $credential = $this->registerPasskey();
+        $this->sessionAuth->logout();
         $assertion = $this->signAssertion($this->passkeyAuth->getLoginOptions(), $credential);
 
-        $this->assertFalse($sessionAuth->loginWithPasskey($this->passkeyAuth, $assertion, 'not-the-token'));
-        $this->assertFalse($sessionAuth->isLoggedIn());
+        $this->assertFalse($this->sessionAuth->loginWithPasskey($this->passkeyAuth, $assertion, 'not-the-token'));
+        $this->assertFalse($this->sessionAuth->isLoggedIn());
     }
 
 }

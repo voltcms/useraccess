@@ -16,11 +16,15 @@ document.addEventListener("DOMContentLoaded", function () {
         passkeyLogin = document.getElementById("passkeyLogin");
         passkeyLoginButton = document.getElementById("passkeyLoginButton");
         passkeysButton = document.getElementById("passkeysButton");
+        passkeyReauth = document.getElementById("passkeyReauth");
+        passkeyReauthPassword = document.getElementById("passkeyReauthPassword");
         passkeysModal = document.getElementById("passkeysModal");
         updateGroupForm = document.getElementById("updateGroupForm");
         updateGroupModal = document.getElementById("updateGroupModal");
         updateUserModal = document.getElementById("updateUserModal");
         updateUserForm = document.getElementById("updateUserForm");
+        updateUserPasskeyList = document.getElementById("updateUserPasskeyList");
+        updateUserPasskeys = document.getElementById("updateUserPasskeys");
 
         initialized = false;
         csrfToken = "";
@@ -191,15 +195,17 @@ document.addEventListener("DOMContentLoaded", function () {
                     this.showError(this.passkeysModal, data.detail || "Could not load your passkeys.");
                     return;
                 }
-                this.renderPasskeys(data.passkeys);
+                this.renderPasskeys(this.passkeyList, data.passkeys, (passkey) => this.deletePasskey(passkey));
             } catch (error) {
                 console.error("Error loading passkeys:", error);
                 this.showError(this.passkeysModal, "Network error while loading your passkeys.");
             }
         }
 
-        // Builds the rows with textContent only: passkey names are user input.
-        renderPasskeys(passkeys) {
+        // Fills a passkey table, for the user's own dialog and the
+        // administrator view alike. Builds the rows with textContent only:
+        // passkey names are user input.
+        renderPasskeys(list, passkeys, onRemove) {
             const rows = passkeys.map((passkey) => {
                 const row = document.createElement("tr");
                 const values = [
@@ -218,7 +224,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 removeButton.type = "button";
                 removeButton.className = "btn btn-outline-danger btn-sm";
                 removeButton.textContent = "Remove";
-                removeButton.addEventListener("click", () => this.deletePasskey(passkey));
+                removeButton.addEventListener("click", () => onRemove(passkey));
                 actions.append(removeButton);
                 row.append(actions);
                 return row;
@@ -232,18 +238,39 @@ document.addEventListener("DOMContentLoaded", function () {
                 row.append(cell);
                 rows.push(row);
             }
-            this.passkeyList.replaceChildren(...rows);
+            list.replaceChildren(...rows);
         }
 
+        // The server only starts a registration when the user signed in or
+        // confirmed their password a few minutes ago. When it asks for that,
+        // the password field appears; the next submit confirms it first.
         async addPasskey() {
             this.clearError(this.passkeysModal);
             try {
+                if (this.passkeyReauthPassword.value !== "") {
+                    const confirmResponse = await fetch("../api/auth/confirm-password", {
+                        method: "POST",
+                        headers: { "Accept": "application/json", "Content-Type": "application/json" },
+                        body: JSON.stringify({ password: this.passkeyReauthPassword.value, csrfToken: this.csrfToken })
+                    });
+                    this.passkeyReauthPassword.value = "";
+                    if (!confirmResponse.ok) {
+                        const data = await confirmResponse.json();
+                        this.showError(this.passkeysModal, data.detail || "That password is not correct.");
+                        return;
+                    }
+                    this.passkeyReauth.classList.add("d-none");
+                }
                 const optionsResponse = await fetch("../api/auth/passkey/register/options", {
                     method: "POST",
                     headers: { "Accept": "application/json" }
                 });
                 const options = await optionsResponse.json();
                 if (!optionsResponse.ok) {
+                    if (options.reauthenticate) {
+                        this.passkeyReauth.classList.remove("d-none");
+                        this.passkeyReauthPassword.focus();
+                    }
                     this.showError(this.passkeysModal, options.detail || "Could not start adding a passkey.");
                     return;
                 }
@@ -276,24 +303,64 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         async deletePasskey(passkey) {
-            if (!window.confirm("Remove the passkey \"" + passkey.name + "\"? It will no longer sign you in.")) {
+            await this.removePasskey(
+                "../api/auth/passkeys/" + encodeURIComponent(passkey.id),
+                "Remove the passkey \"" + passkey.name + "\"? It will no longer sign you in.",
+                this.passkeysModal,
+                () => this.loadPasskeys()
+            );
+        }
+
+        // Shows a user's passkeys in the update dialog, so an administrator
+        // can remove one the user has lost. Stays hidden when the server has
+        // no passkey support.
+        async loadUserPasskeys(userId) {
+            if (!this.passkeysEnabled) {
                 return;
             }
-            this.clearError(this.passkeysModal);
+            this.updateUserPasskeys.classList.remove("d-none");
+            this.updateUserPasskeyList.replaceChildren();
             try {
-                const response = await fetch("../api/auth/passkeys/" + encodeURIComponent(passkey.id), {
-                    method: "DELETE",
+                const response = await fetch("../api/admin/users/" + encodeURIComponent(userId) + "/passkeys", {
                     headers: { "Accept": "application/json" }
                 });
-                if (response.status !== 204) {
-                    const data = await response.json();
-                    this.showError(this.passkeysModal, data.detail || "Could not remove the passkey.");
+                const data = await response.json();
+                if (!response.ok) {
+                    this.showError(this.updateUserModal, data.detail || "Could not load the user's passkeys.");
                     return;
                 }
-                await this.loadPasskeys();
+                this.renderPasskeys(this.updateUserPasskeyList, data.passkeys, (passkey) => this.deleteUserPasskey(userId, passkey));
+            } catch (error) {
+                console.error("Error loading the user's passkeys:", error);
+                this.showError(this.updateUserModal, "Network error while loading the user's passkeys.");
+            }
+        }
+
+        async deleteUserPasskey(userId, passkey) {
+            await this.removePasskey(
+                "../api/admin/users/" + encodeURIComponent(userId) + "/passkeys/" + encodeURIComponent(passkey.id),
+                "Remove the passkey \"" + passkey.name + "\"? The user can no longer sign in with it.",
+                this.updateUserModal,
+                () => this.loadUserPasskeys(userId)
+            );
+        }
+
+        async removePasskey(url, question, modalElement, reload) {
+            if (!window.confirm(question)) {
+                return;
+            }
+            this.clearError(modalElement);
+            try {
+                const response = await fetch(url, { method: "DELETE", headers: { "Accept": "application/json" } });
+                if (response.status !== 204) {
+                    const data = await response.json();
+                    this.showError(modalElement, data.detail || "Could not remove the passkey.");
+                    return;
+                }
+                await reload();
             } catch (error) {
                 console.error("Error removing passkey:", error);
-                this.showError(this.passkeysModal, "Could not remove the passkey.");
+                this.showError(modalElement, "Could not remove the passkey.");
             }
         }
 
@@ -413,6 +480,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         loadUser = async function (id) {
+            this.loadUserPasskeys(id);
             fetch("../api/scim/users" + "/" + id)
                 .then(response => response.json())
                 .then(data => {

@@ -43,16 +43,23 @@ $sessionAuth = SessionAuth::getInstance($userProvider, $groupProvider);
 // https://example.com). Browsers only offer passkeys in a secure context:
 // https, or http on localhost. Passkeys need the optional
 // web-auth/webauthn-lib package; without it the demo runs password-only.
-$passkeyAuth = null;
-if (PasskeyAuth::isAvailable()) {
-    $passkeyAuth = new PasskeyAuth(
-        $userProvider,
-        $passkeyProvider,
-        getenv('USERACCESS_PASSKEY_RP_ID') ?: 'localhost',
-        'User Access Demo',
-        explode(',', getenv('USERACCESS_PASSKEY_ORIGINS') ?: 'http://localhost:8000')
-    );
-    $passkeyAuth->setAuditLog(new AuditLog('../data/audit'));
+//
+// Built on first use: setting it up loads webauthn-lib and Symfony's
+// serializer (about 6 ms with opcache), which only the passkey routes need.
+function passkeyAuth(): PasskeyAuth
+{
+    static $passkeyAuth = null;
+    if ($passkeyAuth === null) {
+        $passkeyAuth = new PasskeyAuth(
+            UserProvider::getInstance(),
+            PasskeyProvider::getInstance(),
+            getenv('USERACCESS_PASSKEY_RP_ID') ?: 'localhost',
+            'User Access Demo',
+            explode(',', getenv('USERACCESS_PASSKEY_ORIGINS') ?: 'http://localhost:8000')
+        );
+        $passkeyAuth->setAuditLog(new AuditLog('../data/audit'));
+    }
+    return $passkeyAuth;
 }
 
 // Resolve the request path relative to this front controller (mirrors how the
@@ -101,6 +108,26 @@ function requireSessionUser(SessionAuth $sessionAuth): User
     return $user;
 }
 
+// The /admin endpoints act on other users, so they need an administrator.
+function requireAdmin(SessionAuth $sessionAuth): User
+{
+    $user = requireSessionUser($sessionAuth);
+    if (!$user->isAdmin()) {
+        sendJson(['detail' => 'This needs an administrator.'], 403);
+    }
+    return $user;
+}
+
+// The user an /admin endpoint names, or a 404. The route regex already limits
+// $id to UUID characters.
+function requireUser(UserProvider $userProvider, string $id): User
+{
+    if (!$userProvider->exists('id', $id)) {
+        sendJson(['detail' => 'That user does not exist.'], 404);
+    }
+    return $userProvider->read('id', $id);
+}
+
 // Turns a PasskeyAuth exception code into a message for the UI. Anything not
 // listed is unexpected and gets a generic 500 instead of the raw code.
 function sendPasskeyError(Exception $e): never
@@ -111,10 +138,16 @@ function sendPasskeyError(Exception $e): never
         'EXCEPTION_PASSKEY_VERIFICATION_FAILED' => [400, 'The passkey could not be verified.'],
         'EXCEPTION_PASSKEY_ALREADY_EXIST' => [409, 'This passkey is already registered.'],
         'EXCEPTION_ENTRY_NOT_EXIST' => [404, 'That passkey does not exist.'],
+        'EXCEPTION_PASSKEY_REAUTHENTICATION_REQUIRED' => [401, 'Confirm your password to add a passkey.'],
     ];
     error_log('Passkey request failed: ' . $e->getMessage());
     [$status, $detail] = $errors[$e->getMessage()] ?? [500, 'The passkey request failed.'];
-    sendJson(['detail' => $detail], $status);
+    $payload = ['detail' => $detail];
+    if ($e->getMessage() === 'EXCEPTION_PASSKEY_REAUTHENTICATION_REQUIRED') {
+        // Tells the UI to ask for the password and try again.
+        $payload['reauthenticate'] = true;
+    }
+    sendJson($payload, $status);
 }
 
 function readJsonBody(): array
@@ -135,7 +168,7 @@ if ($path === '/auth/session' && $method === 'GET') {
         'isAdmin' => $user ? $user->isAdmin() : false,
         'csrfToken' => $sessionAuth->getCsrfToken(),
         // Tells the UI whether to offer passkeys at all.
-        'passkeys' => $passkeyAuth !== null,
+        'passkeys' => PasskeyAuth::isAvailable(),
     ));
 }
 
@@ -159,16 +192,28 @@ if ($path === '/auth/logout' && $method === 'POST') {
     sendJson(array('loggedIn' => false));
 }
 
+// POST /auth/confirm-password — { password, csrfToken }. Re-proves who holds
+// the session; adding a passkey requires that to be recent.
+if ($path === '/auth/confirm-password' && $method === 'POST') {
+    requireSessionUser($sessionAuth);
+    $body = readJsonBody();
+    if (!$sessionAuth->confirmPassword((string) ($body['password'] ?? ''), $body['csrfToken'] ?? null)) {
+        $status = http_response_code() === 429 ? 429 : 401;
+        sendJson(['confirmed' => false, 'detail' => $status === 429 ? 'Too many attempts. Try again later.' : 'That password is not correct.'], $status);
+    }
+    sendJson(['confirmed' => true]);
+}
+
 // Without webauthn-lib there are no passkey endpoints; say so instead of
 // letting the request fall through to the SCIM router.
-if ($passkeyAuth === null && str_starts_with($path, '/auth/passkey')) {
+if (!PasskeyAuth::isAvailable() && (str_starts_with($path, '/auth/passkey') || preg_match('#^/admin/users/[^/]+/passkeys#', $path))) {
     sendJson(['detail' => 'Passkeys are not available on this server.'], 404);
 }
 
 // POST /auth/passkey/login/options — start a passkey sign-in; the response is
 // what navigator.credentials.get() takes.
 if ($path === '/auth/passkey/login/options' && $method === 'POST') {
-    sendJson($passkeyAuth->getLoginOptions());
+    sendJson(passkeyAuth()->getLoginOptions());
 }
 
 // POST /auth/passkey/login — { credential, csrfToken }, where credential is
@@ -176,7 +221,7 @@ if ($path === '/auth/passkey/login/options' && $method === 'POST') {
 if ($path === '/auth/passkey/login' && $method === 'POST') {
     $body = readJsonBody();
     $credential = json_encode($body['credential'] ?? null);
-    if (!$sessionAuth->loginWithPasskey($passkeyAuth, $credential, $body['csrfToken'] ?? null)) {
+    if (!$sessionAuth->loginWithPasskey(passkeyAuth(), $credential, $body['csrfToken'] ?? null)) {
         sendJson(['loggedIn' => false, 'detail' => 'The passkey could not be verified.'], 401);
     }
     sendLoginResult($sessionAuth);
@@ -184,9 +229,16 @@ if ($path === '/auth/passkey/login' && $method === 'POST') {
 
 // POST /auth/passkey/register/options — start registering a passkey for the
 // signed-in user; the response is what navigator.credentials.create() takes.
+// Refused with 401 and "reauthenticate" unless the user signed in or
+// confirmed their password in the last five minutes.
 if ($path === '/auth/passkey/register/options' && $method === 'POST') {
     $user = requireSessionUser($sessionAuth);
-    sendJson($passkeyAuth->getRegistrationOptions($user));
+    try {
+        $options = passkeyAuth()->getRegistrationOptions($user);
+    } catch (Exception $e) {
+        sendPasskeyError($e);
+    }
+    sendJson($options);
 }
 
 // POST /auth/passkey/register — { credential, name }
@@ -194,7 +246,7 @@ if ($path === '/auth/passkey/register' && $method === 'POST') {
     $user = requireSessionUser($sessionAuth);
     $body = readJsonBody();
     try {
-        $passkey = $passkeyAuth->register($user, json_encode($body['credential'] ?? null), (string) ($body['name'] ?? ''));
+        $passkey = passkeyAuth()->register($user, json_encode($body['credential'] ?? null), (string) ($body['name'] ?? ''));
     } catch (Exception $e) {
         sendPasskeyError($e);
     }
@@ -205,7 +257,7 @@ if ($path === '/auth/passkey/register' && $method === 'POST') {
 if ($path === '/auth/passkeys' && $method === 'GET') {
     $user = requireSessionUser($sessionAuth);
     $passkeys = [];
-    foreach ($passkeyAuth->getPasskeys($user) as $passkey) {
+    foreach (passkeyAuth()->getPasskeys($user) as $passkey) {
         $passkeys[] = $passkey->toArray();
     }
     sendJson(['passkeys' => $passkeys]);
@@ -215,7 +267,33 @@ if ($path === '/auth/passkeys' && $method === 'GET') {
 if (preg_match('#^/auth/passkeys/([a-f0-9-]{36})$#', $path, $matches) && $method === 'DELETE') {
     $user = requireSessionUser($sessionAuth);
     try {
-        $passkeyAuth->deletePasskey($user, $matches[1]);
+        passkeyAuth()->deletePasskey($user, $matches[1]);
+    } catch (Exception $e) {
+        sendPasskeyError($e);
+    }
+    http_response_code(204);
+    exit();
+}
+
+// GET /admin/users/{id}/passkeys — any user's passkeys, for an administrator.
+// Kept out of the SCIM API, which has no standard resource for them.
+if (preg_match('#^/admin/users/([a-f0-9-]{36})/passkeys$#', $path, $matches) && $method === 'GET') {
+    requireAdmin($sessionAuth);
+    $owner = requireUser($userProvider, $matches[1]);
+    $passkeys = [];
+    foreach (passkeyAuth()->getPasskeys($owner) as $passkey) {
+        $passkeys[] = $passkey->toArray();
+    }
+    sendJson(['passkeys' => $passkeys]);
+}
+
+// DELETE /admin/users/{id}/passkeys/{passkeyId} — revoke a passkey for its
+// owner, e.g. on a lost phone. Audited with the administrator as the actor.
+if (preg_match('#^/admin/users/([a-f0-9-]{36})/passkeys/([a-f0-9-]{36})$#', $path, $matches) && $method === 'DELETE') {
+    $admin = requireAdmin($sessionAuth);
+    $owner = requireUser($userProvider, $matches[1]);
+    try {
+        passkeyAuth()->deletePasskey($owner, $matches[2], $admin);
     } catch (Exception $e) {
         sendPasskeyError($e);
     }

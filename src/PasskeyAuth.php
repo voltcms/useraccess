@@ -66,6 +66,11 @@ class PasskeyAuth
     // ceremony. WebAuthn recommends 300000-600000 when user verification is
     // required.
     public const DEFAULT_TIMEOUT = 300000;
+    // How recently, in seconds, a user must have signed in or confirmed their
+    // password before they may add a passkey. Without this, whoever hijacks a
+    // session could add their own passkey and keep access past a password
+    // change.
+    public const DEFAULT_REAUTHENTICATION_WINDOW = 300;
     private const CEREMONY_REGISTRATION = 'registration';
     private const CEREMONY_LOGIN = 'login';
     private const CHALLENGE_LENGTH = 32;
@@ -74,6 +79,7 @@ class PasskeyAuth
     private PasskeyProviderInterface $passkeyProvider;
     private PublicKeyCredentialRpEntity $relyingParty;
     private int $timeout;
+    private int $reauthenticationWindow = self::DEFAULT_REAUTHENTICATION_WINDOW;
     private SerializerInterface $serializer;
     private CeremonyStepManagerFactory $ceremonyStepManagerFactory;
     private AuditLog $auditLog;
@@ -141,12 +147,24 @@ class PasskeyAuth
         $this->auditLog = $auditLog;
     }
 
+    // Shortens or lengthens DEFAULT_REAUTHENTICATION_WINDOW. The check itself
+    // cannot be switched off.
+    public function setReauthenticationWindow(int $seconds): void
+    {
+        $this->reauthenticationWindow = max(1, $seconds);
+    }
+
     // Starts registering a passkey for $user and returns the options for
     // navigator.credentials.create(), in WebAuthn's JSON form (binary values as
     // base64url). The user's existing passkeys are excluded, so the browser
-    // refuses to register the same authenticator twice.
+    // refuses to register the same authenticator twice. Throws
+    // EXCEPTION_PASSKEY_REAUTHENTICATION_REQUIRED unless $user signed in or
+    // confirmed their password (SessionAuth::confirmPassword()) recently.
     public function getRegistrationOptions(User $user): array
     {
+        if (!SessionAuth::isRecentlyAuthenticated($user, $this->reauthenticationWindow)) {
+            throw new Exception('EXCEPTION_PASSKEY_REAUTHENTICATION_REQUIRED');
+        }
         $excludeCredentials = [];
         foreach ($this->getPasskeys($user) as $passkey) {
             $excludeCredentials[] = $passkey->toCredentialRecord()->getPublicKeyCredentialDescriptor();
@@ -196,7 +214,7 @@ class PasskeyAuth
         }
         $passkey->fromCredentialRecord($record);
         $passkey = $this->passkeyProvider->create($passkey);
-        $this->writeAudit('passkey.register', $user, $passkey);
+        $this->writeAudit('passkey.register', $user, $user, $passkey);
         return $passkey;
     }
 
@@ -265,9 +283,11 @@ class PasskeyAuth
         return $passkeys;
     }
 
-    // Removes one of $user's passkeys. Somebody else's passkey is reported as
-    // missing rather than forbidden, so passkey ids cannot be probed.
-    public function deletePasskey(User $user, string $passkeyId): void
+    // Removes one of $owner's passkeys. Somebody else's passkey is reported as
+    // missing rather than forbidden, so passkey ids cannot be probed. $actor is
+    // who asked, for the audit log: the owner unless an administrator acts for
+    // them (a lost device). Deciding who may act for whom is the caller's job.
+    public function deletePasskey(User $owner, string $passkeyId, ?User $actor = null): void
     {
         $passkeyId = trim(strtolower($passkeyId));
         // The id usually comes straight from a client and FileDB turns it into
@@ -276,11 +296,11 @@ class PasskeyAuth
             throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
         }
         $passkey = $this->passkeyProvider->read('id', $passkeyId);
-        if ($passkey->getUserId() !== $user->getId()) {
+        if ($passkey->getUserId() !== $owner->getId()) {
             throw new Exception('EXCEPTION_ENTRY_NOT_EXIST');
         }
         $this->passkeyProvider->delete($passkey->getId());
-        $this->writeAudit('passkey.delete', $user, $passkey);
+        $this->writeAudit('passkey.delete', $actor ?? $owner, $owner, $passkey);
     }
 
     // Keeps a ceremony's options in the session and returns them in the JSON
@@ -323,19 +343,20 @@ class PasskeyAuth
         }
     }
 
-    private function writeAudit(string $action, User $user, Passkey $passkey): void
+    private function writeAudit(string $action, User $actor, User $owner, Passkey $passkey): void
     {
         if (!$this->auditLog->isEnabled()) {
             return;
         }
         $this->auditLog->record([
-            'actor' => $user->getUserName(),
+            'actor' => $actor->getUserName(),
             'actorType' => 'user',
             'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
             'action' => $action,
             'targetType' => 'Passkey',
             'targetId' => $passkey->getId(),
             'target' => $passkey->getName(),
+            'owner' => $owner->getUserName(),
             'outcome' => 'success',
         ]);
     }

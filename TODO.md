@@ -34,9 +34,9 @@ been dropped — git history is the record.
 
 ## Passkeys
 
-- [ ] **No admin-side passkey management.** Users list and remove their own passkeys; an administrator cannot
-  see or revoke another user's (e.g. a lost phone) short of deleting the user. Needs an admin API — over SCIM
-  that would be a custom resource or extension, which is a design call.
+- [x] **Admin-side passkey management.** `deletePasskey($owner, $id, $actor)` lets an administrator revoke a
+  user's passkey (audited with both names); the demo exposes it as `/admin/users/{id}/passkeys`, outside SCIM.
+- [x] **Adding a passkey needs a recent sign-in** (5 minutes by default) or `SessionAuth::confirmPassword()`.
 - [ ] **Conditional mediation (passkey autofill) is not wired up.** The library side works as is (username-less
   request options); the demo would need `mediation: "conditional"` and `autocomplete="username webauthn"`.
 - [ ] **Attestation is accepted, not evaluated.** Registration asks for `none`, accepts every format that needs no

@@ -217,6 +217,24 @@
                             <input class="form-check-input" type="checkbox" id="updateActive" name="active" checked>
                             <label class="form-check-label" for="updateActive">Active</label>
                         </div>
+                        <!-- administrator view of the user's passkeys; hidden when the server has none -->
+                        <div id="updateUserPasskeys" class="d-none">
+                            <h2 class="fs-5">Passkeys</h2>
+                            <p class="form-text">Remove a passkey the user has lost. Removal takes effect
+                                immediately; Save is not needed.</p>
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Added</th>
+                                        <th>Last used</th>
+                                        <th>Synced</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="updateUserPasskeyList"></tbody>
+                            </table>
+                        </div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -375,6 +393,13 @@
                             </thead>
                             <tbody id="passkeyList"></tbody>
                         </table>
+                        <!-- shown when the server wants a fresh password before adding a passkey -->
+                        <div id="passkeyReauth" class="mb-3 d-none">
+                            <label for="passkeyReauthPassword" class="form-label">Confirm your password</label>
+                            <input type="password" class="form-control" id="passkeyReauthPassword"
+                                autocomplete="current-password">
+                            <div class="form-text">Adding a passkey needs a sign-in from the last few minutes.</div>
+                        </div>
                         <label for="addPasskeyName" class="form-label">Name for a new passkey</label>
                         <div class="input-group">
                             <input type="text" class="form-control" id="addPasskeyName" name="name" maxlength="64"

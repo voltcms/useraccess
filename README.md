@@ -332,11 +332,13 @@ Each ceremony takes two requests to endpoints you define (`demo/api/index.php` h
 
 | Step | Server | Browser |
 |------|--------|---------|
+| Re‑authenticate (if the last sign‑in is older than 5 min) | `$session->confirmPassword($password, $csrfToken)` → `bool` | |
 | Register (signed in) | `$passkeys->getRegistrationOptions($user)` | `navigator.credentials.create({ publicKey })` |
 | | `$passkeys->register($user, $credentialJson, $name)` → `Passkey` | |
 | Sign in | `$passkeys->getLoginOptions()` | `navigator.credentials.get({ publicKey })` |
 | | `$session->loginWithPasskey($passkeys, $credentialJson, $csrfToken)` → `bool` | |
-| Manage | `$passkeys->getPasskeys($user)`, `$passkeys->deletePasskey($user, $id)` | |
+| Manage own | `$passkeys->getPasskeys($user)`, `$passkeys->deletePasskey($user, $id)` | |
+| Admin, for another user | `$passkeys->getPasskeys($owner)`, `$passkeys->deletePasskey($owner, $id, $admin)` | |
 
 Options come back in WebAuthn's JSON form (binary values as unpadded base64url). Convert them
 to `ArrayBuffer`s for `navigator.credentials` and send the credential back serialized the way
@@ -357,14 +359,25 @@ to `ArrayBuffer`s for `navigator.credentials` and send the credential back seria
   same bootstrap as `UserProvider`.
 - Like Bearer tokens, passkey sign‑in is not run through `LoginThrottle`: there is no secret to
   guess.
-- **Registration trusts whoever holds the session.** A hijacked session could add the
-  attacker's own passkey and keep access past a password change, so consider asking for the
-  password again before `getRegistrationOptions()`. Registrations and removals are recorded
-  when an audit log is set.
+- **Adding a passkey needs a recent sign‑in.** `getRegistrationOptions()` throws
+  `EXCEPTION_PASSKEY_REAUTHENTICATION_REQUIRED` unless the user signed in (password or
+  passkey) or called `confirmPassword()` within the last 5 minutes
+  (`setReauthenticationWindow($seconds)` changes that; it cannot be turned off). Otherwise a
+  hijacked session could add the attacker's own passkey and keep access past a password change.
+  `confirmPassword()` shares `login()`'s lockout.
+- **Administrators can revoke a user's passkeys** (a lost phone) by passing that user as the
+  owner and themselves as the actor. The library leaves *who* may do that to you: check
+  `isAdmin()` (or your own rule) first, as the demo's `/admin/users/{id}/passkeys` endpoints
+  do. These stay outside the SCIM API, which has no standard resource for passkeys.
+- Registrations and removals are recorded when an audit log is set, with the passkey's
+  `owner` and the acting user as `actor`.
 
 Failures throw `EXCEPTION_PASSKEY_VERIFICATION_FAILED` (the reason goes to the error log),
 `EXCEPTION_PASSKEY_CEREMONY_MISSING` (no pending or an expired challenge),
-`EXCEPTION_INVALID_PASSKEY_NAME`, or `EXCEPTION_ENTRY_NOT_EXIST` from `deletePasskey()`.
+`EXCEPTION_PASSKEY_REAUTHENTICATION_REQUIRED`, `EXCEPTION_INVALID_PASSKEY_NAME`, or
+`EXCEPTION_ENTRY_NOT_EXIST` from `deletePasskey()`. Constructing `PasskeyAuth` loads
+webauthn-lib and Symfony's serializer (about 6 ms with opcache), so build it only on the
+routes that use it — the demo wraps it in a function for that reason.
 Browsers offer WebAuthn only in a secure context: serve the UI over HTTPS, or from
 `http://localhost` during development.
 
@@ -411,6 +424,7 @@ SessionAuth::getInstance($userProvider, $groupProvider, $maxLoginAttempts = 10, 
 PasskeyProvider::getInstance(['directory' => '/path/out/of/webroot/passkeys']);
 $passkeys = new PasskeyAuth($userProvider, $passkeyProvider, $rpId, $rpName, $allowedOrigins, $timeoutMs = 300000);
 $passkeys->setAuditLog(new AuditLog('/var/log/voltcms'));
+$passkeys->setReauthenticationWindow($seconds = 300);   // max age of the sign-in that may add a passkey
 ```
 
 ## The demo
@@ -431,7 +445,10 @@ exposes `/auth/session|login|logout`, and gates the UI behind a login form. Set
 Passkeys work out of the box at `http://localhost:8000`: sign in, open **Passkeys** to add one,
 then use **Sign in with a passkey**. The endpoints are `/auth/passkey/login/options`,
 `/auth/passkey/login`, `/auth/passkey/register/options`, `/auth/passkey/register`,
-`GET /auth/passkeys` and `DELETE /auth/passkeys/{id}`. On any other host, export
+`GET /auth/passkeys`, `DELETE /auth/passkeys/{id}` and `POST /auth/confirm-password`, plus,
+for administrators, `GET /admin/users/{id}/passkeys` and
+`DELETE /admin/users/{id}/passkeys/{passkeyId}` (shown in the **Update User** dialog). On any
+other host, export
 `USERACCESS_PASSKEY_RP_ID` (e.g. `example.com`) and `USERACCESS_PASSKEY_ORIGINS`
 (comma‑separated, e.g. `https://example.com`).
 

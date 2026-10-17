@@ -53,10 +53,16 @@ composer phpcs                      # coding standard (composer phpcbf autofixes
   ceremonies. Every verification failure surfaces as `EXCEPTION_PASSKEY_VERIFICATION_FAILED` with the real reason in
   `error_log`. `Passkey` stores binary values as canonical unpadded base64url (`Utils::base64UrlEncode/Decode`) and converts
   to webauthn-lib's `CredentialRecord` only at the ceremony boundary, so the on-disk keys stay independent of the library.
-  Passkey management (list/delete) is self-service only; nothing passkey-related is exposed over SCIM. Because webauthn-lib is
+  `getRegistrationOptions()` requires a recent authentication (`SessionAuth::isRecentlyAuthenticated()`, stamped in
+  `UA_AUTHENTICATED` by password/passkey sign-in and `confirmPassword()`, cleared on logout, never renewed by the session
+  refresh); the window is configurable but the check cannot be disabled. `deletePasskey($owner, $id, $actor)` serves both
+  self-service and administrators; authorizing the actor is the caller's job (the demo's `/admin/users/{id}/passkeys` routes
+  check `isAdmin()`). Nothing passkey-related is exposed over SCIM. Because webauthn-lib is
   optional, only `PasskeyAuth` (and the `Passkey` record converters it calls) may touch `Webauthn\`/Symfony classes; everything
   else, `Passkey`/`PasskeyProvider` included, must load and run without them. `PasskeyAuth::isAvailable()` reports whether the
-  package is installed and the constructor throws when it isn't; the demo checks the former and goes password-only.
+  package is installed and the constructor throws when it isn't; the demo checks the former and goes password-only. The
+  demo builds `PasskeyAuth` lazily (`passkeyAuth()`), since constructing it loads the serializer stack — keep it off
+  routes that don't need it.
 
 ## Coding standards
 

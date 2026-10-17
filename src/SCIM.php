@@ -1370,6 +1370,8 @@ class SCIM
             case 'EXCEPTION_GROUP_ALREADY_EXIST':
             case 'EXCEPTION_PASSKEY_ALREADY_EXIST':
                 return 409;
+            case 'EXCEPTION_PASSKEY_REAUTHENTICATION_REQUIRED':
+                return 401;
             default:
                 return 400;
         }
@@ -1462,6 +1464,8 @@ class SCIM
                 return 'No passkey request is pending, or it has expired. Start again.';
             case 'EXCEPTION_PASSKEY_VERIFICATION_FAILED':
                 return 'The passkey could not be verified.';
+            case 'EXCEPTION_PASSKEY_REAUTHENTICATION_REQUIRED':
+                return 'Confirm your password (or sign in again) before adding a passkey.';
             default:
                 return 'The request could not be completed.';
         }
