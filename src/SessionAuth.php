@@ -15,6 +15,11 @@ class SessionAuth
     public const UA_ATTEMPTS = 'UA_ATTEMPTS';
     public const UA_REFRESH = 'UA_REFRESH';
     public const UA_CSRF = 'X-CSRF-Token';
+    // When the signed-in user last proved who they are (a password or passkey
+    // sign-in, or confirmPassword()), as ['userId' => ..., 'time' => ...].
+    // Sensitive actions such as adding a passkey require it to be recent; the
+    // periodic session refresh does not renew it.
+    public const UA_AUTHENTICATED = 'UA_AUTHENTICATED';
 
     public const SESSION_REFRESH_TIME = 60;
 
@@ -147,6 +152,7 @@ class SessionAuth
             $_SESSION[self::UA_USERNAME] = '';
             $_SESSION[self::UA_DISPLAYNAME] = '';
             $_SESSION[self::UA_EMAIL] = '';
+            unset($_SESSION[self::UA_AUTHENTICATED]);
         }
         $_SESSION[self::UA_ATTEMPTS] = $loginAttempts;
         $_SESSION[self::UA_REFRESH] = self::$instance->now;
@@ -179,6 +185,7 @@ class SessionAuth
                                 session_regenerate_id(true);
                             }
                             $this->setSessionInfo($user, 0);
+                            $this->markAuthenticated($user);
                             $this->throttle->reset($throttleKey);
                             $result = true;
                         }
@@ -194,6 +201,78 @@ class SessionAuth
             http_response_code($locked ? 429 : 401);
         }
         return $result;
+    }
+
+    // Signs in with a passkey: $passkeyAuth verifies the assertion from
+    // navigator.credentials.get() against the challenge it issued, and the
+    // passkey's user gets the same session a password login opens. A failure
+    // logs the session out and answers 401 like login() does, but neither
+    // counts against the password attempt limit nor is throttled: there is no
+    // secret to guess (see PasskeyAuth).
+    public function loginWithPasskey(PasskeyAuth $passkeyAuth, string $response, ?string $csrfToken = null): bool
+    {
+        $user = null;
+        if (empty($csrfToken) || hash_equals($_SESSION[self::UA_CSRF], $csrfToken)) {
+            try {
+                $user = $passkeyAuth->authenticate($response);
+            } catch (Exception $e) {
+                error_log('Passkey login failed: ' . $e->getMessage());
+            }
+        }
+        if ($user === null) {
+            $this->setSessionInfo(null, $_SESSION[self::UA_ATTEMPTS]);
+            http_response_code(401);
+            return false;
+        }
+        if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
+            session_regenerate_id(true);
+        }
+        $this->setSessionInfo($user, 0);
+        $this->markAuthenticated($user);
+        return true;
+    }
+
+    // Re-checks the signed-in user's password without changing the session, so
+    // a sensitive action can demand proof that whoever holds the session still
+    // knows it. Shares login()'s lockout for that user name; answers 401 (429
+    // when locked out) on failure but leaves the user signed in.
+    public function confirmPassword(string $password, ?string $csrfToken = null): bool
+    {
+        $user = $this->getLoggedInUser();
+        if ($user === null || !$user->isActive()) {
+            http_response_code(401);
+            return false;
+        }
+        $throttleKey = $this->throttle->key($user->getUserName());
+        if ($this->throttle->isLocked($throttleKey)) {
+            http_response_code(429);
+            return false;
+        }
+        if ((empty($csrfToken) || hash_equals($_SESSION[self::UA_CSRF], $csrfToken)) && $user->verifyPassword($password)) {
+            $this->throttle->reset($throttleKey);
+            $this->markAuthenticated($user);
+            return true;
+        }
+        $this->throttle->registerFailure($throttleKey);
+        http_response_code(401);
+        return false;
+    }
+
+    // Whether $user proved who they are in this session within the last
+    // $maxAge seconds. Static so that PasskeyAuth, which has no SessionAuth
+    // instance, can gate passkey registration on it.
+    public static function isRecentlyAuthenticated(User $user, int $maxAge): bool
+    {
+        $authenticated = $_SESSION[self::UA_AUTHENTICATED] ?? null;
+        return is_array($authenticated)
+            && $user->getId() !== ''
+            && ($authenticated['userId'] ?? null) === $user->getId()
+            && (int) ($authenticated['time'] ?? 0) >= time() - $maxAge;
+    }
+
+    private function markAuthenticated(User $user): void
+    {
+        $_SESSION[self::UA_AUTHENTICATED] = ['userId' => $user->getId(), 'time' => time()];
     }
 
     // Exposes the per-session CSRF token so a login form can echo it back and

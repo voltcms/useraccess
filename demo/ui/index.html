@@ -47,6 +47,12 @@
                     </div>
                     <button type="submit" class="btn btn-primary w-100">Sign in</button>
                 </form>
+                <!-- shown only when the browser supports passkeys -->
+                <div id="passkeyLogin" class="d-none">
+                    <div class="text-center text-secondary small my-3">or</div>
+                    <button type="button" id="passkeyLoginButton" class="btn btn-outline-primary w-100">Sign in with a
+                        passkey</button>
+                </div>
             </div>
         </div>
     </div>
@@ -56,6 +62,8 @@
             <h1>User Access</h1>
             <div class="d-flex align-items-center gap-3 flex-wrap">
                 <span id="currentUser" class="text-secondary small"></span>
+                <button type="button" id="passkeysButton" class="btn btn-outline-secondary btn-sm d-none"
+                    data-bs-toggle="modal" data-bs-target="#passkeysModal">Passkeys</button>
                 <button type="button" id="logoutButton" class="btn btn-outline-secondary btn-sm">Logout</button>
                 <div class="dropdown">
                 <button class="btn btn-secondary dropdown-toggle d-flex align-items-center" id="bd-theme" type="button"
@@ -209,6 +217,24 @@
                             <input class="form-check-input" type="checkbox" id="updateActive" name="active" checked>
                             <label class="form-check-label" for="updateActive">Active</label>
                         </div>
+                        <!-- administrator view of the user's passkeys; hidden when the server has none -->
+                        <div id="updateUserPasskeys" class="d-none">
+                            <h2 class="fs-5">Passkeys</h2>
+                            <p class="form-text">Remove a passkey the user has lost. Removal takes effect
+                                immediately; Save is not needed.</p>
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Added</th>
+                                        <th>Last used</th>
+                                        <th>Synced</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="updateUserPasskeyList"></tbody>
+                            </table>
+                        </div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -337,6 +363,52 @@
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                         <button type="submit" class="btn btn-primary">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- passkeys modal: the signed-in user's own passkeys -->
+    <div class="modal fade" id="passkeysModal" tabindex="-1" aria-labelledby="passkeysModalTitle">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <form id="addPasskeyForm">
+                    <div class="modal-header">
+                        <h1 class="modal-title fs-5" id="passkeysModalTitle">Your Passkeys</h1>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-danger d-none ua-error" role="alert"></div>
+                        <p>A passkey signs you in with your fingerprint, face or device PIN instead of your password.</p>
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Added</th>
+                                    <th>Last used</th>
+                                    <th>Synced</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="passkeyList"></tbody>
+                        </table>
+                        <!-- shown when the server wants a fresh password before adding a passkey -->
+                        <div id="passkeyReauth" class="mb-3 d-none">
+                            <label for="passkeyReauthPassword" class="form-label">Confirm your password</label>
+                            <input type="password" class="form-control" id="passkeyReauthPassword"
+                                autocomplete="current-password">
+                            <div class="form-text">Adding a passkey needs a sign-in from the last few minutes.</div>
+                        </div>
+                        <label for="addPasskeyName" class="form-label">Name for a new passkey</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="addPasskeyName" name="name" maxlength="64"
+                                placeholder="e.g. Work laptop">
+                            <button type="submit" class="btn btn-primary">Add a passkey</button>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                     </div>
                 </form>
             </div>

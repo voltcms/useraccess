@@ -80,4 +80,19 @@ class UtilsTest extends TestCase
         ));
     }
 
+    public function testBase64UrlEncodeIsUnpaddedAndUrlSafe(): void
+    {
+        $this->assertSame('-_8', Utils::base64UrlEncode("\xfb\xff"));
+        $this->assertSame("\xfb\xff", Utils::base64UrlDecode('-_8'));
+        $this->assertSame("\xfb\xff", Utils::base64UrlDecode('-_8='));
+    }
+
+    public function testBase64UrlDecodeRejectsCharactersOutsideTheAlphabet(): void
+    {
+        // '+' and '/' belong to standard base64, not base64url.
+        $this->assertNull(Utils::base64UrlDecode('+/8'));
+        $this->assertNull(Utils::base64UrlDecode('ab cd'));
+        $this->assertNull(Utils::base64UrlDecode('A'));
+    }
+
 }

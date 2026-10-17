@@ -32,6 +32,19 @@ been dropped — git history is the record.
   `ServiceProviderConfig`; filtering handles a single `attribute eq "value"` expression only. Filtering on
   custom attributes is also unsupported.
 
+## Passkeys
+
+- [x] **Admin-side passkey management.** `deletePasskey($owner, $id, $actor)` lets an administrator revoke a
+  user's passkey (audited with both names); the demo exposes it as `/admin/users/{id}/passkeys`, outside SCIM.
+- [x] **Adding a passkey needs a recent sign-in** (5 minutes by default) or `SessionAuth::confirmPassword()`.
+- [ ] **Conditional mediation (passkey autofill) is not wired up.** The library side works as is (username-less
+  request options); the demo would need `mediation: "conditional"` and `autocomplete="username webauthn"`.
+- [ ] **Attestation is accepted, not evaluated.** Registration asks for `none`, accepts every format that needs no
+  metadata service, and stores the trust path. Restricting authenticator models would need webauthn-lib's
+  metadata-statement support (FIDO MDS) plus a policy.
+- [x] **webauthn-lib is optional.** It is a `suggest` (plus `require-dev` for the tests and a `conflict` pinning ^5.3), so
+  hosts without passkeys keep the two-package install. `PasskeyAuth::isAvailable()` is the runtime check.
+
 ## Tooling
 
 - [ ] **No JS linter.** There is no ESLint or Prettier config, so nothing checks `demo/ui/js/`. Both JS files

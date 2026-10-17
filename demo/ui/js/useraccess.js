@@ -2,6 +2,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     class UserAccess {
 
+        addPasskeyForm = document.getElementById("addPasskeyForm");
         createGroupForm = document.getElementById("createGroupForm");
         createGroupModal = document.getElementById("createGroupModal");
         createUserForm = document.getElementById("createUserForm");
@@ -10,13 +11,25 @@ document.addEventListener("DOMContentLoaded", function () {
         deleteGroupModal = document.getElementById("deleteGroupModal");
         deleteUserForm = document.getElementById("deleteUserForm");
         deleteUserModal = document.getElementById("deleteUserModal");
+        loginError = document.getElementById("loginError");
+        passkeyList = document.getElementById("passkeyList");
+        passkeyLogin = document.getElementById("passkeyLogin");
+        passkeyLoginButton = document.getElementById("passkeyLoginButton");
+        passkeysButton = document.getElementById("passkeysButton");
+        passkeyReauth = document.getElementById("passkeyReauth");
+        passkeyReauthPassword = document.getElementById("passkeyReauthPassword");
+        passkeysModal = document.getElementById("passkeysModal");
         updateGroupForm = document.getElementById("updateGroupForm");
         updateGroupModal = document.getElementById("updateGroupModal");
         updateUserModal = document.getElementById("updateUserModal");
         updateUserForm = document.getElementById("updateUserForm");
+        updateUserPasskeyList = document.getElementById("updateUserPasskeyList");
+        updateUserPasskeys = document.getElementById("updateUserPasskeys");
 
         initialized = false;
         csrfToken = "";
+        // Set from /auth/session: false when the server lacks webauthn-lib.
+        passkeysEnabled = false;
 
         // Show the login view and hide the app. Binds the login form once.
         showLogin = function () {
@@ -31,6 +44,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     this.login();
                 });
             }
+            this.setUpPasskeyLogin();
         }
 
         // Show the app for an authenticated admin session. Runs init() once,
@@ -103,9 +117,319 @@ document.addEventListener("DOMContentLoaded", function () {
             this.showLogin();
         }
 
+        // Offers passkey sign-in when both the browser and the server support
+        // it. Binds once.
+        setUpPasskeyLogin() {
+            if (!window.PublicKeyCredential || !this.passkeysEnabled || this.passkeyLoginButton.dataset.bound) {
+                return;
+            }
+            this.passkeyLoginButton.dataset.bound = "1";
+            this.passkeyLogin.classList.remove("d-none");
+            this.passkeyLoginButton.addEventListener("click", () => this.loginWithPasskey());
+        }
+
+        showLoginError(message) {
+            this.loginError.textContent = message;
+            this.loginError.classList.remove("d-none");
+        }
+
+        // Fetches a challenge, lets the browser and the authenticator answer
+        // it, and hands the answer back to the server to open the session.
+        async loginWithPasskey() {
+            this.loginError.classList.add("d-none");
+            try {
+                const optionsResponse = await fetch("../api/auth/passkey/login/options", {
+                    method: "POST",
+                    headers: { "Accept": "application/json" }
+                });
+                if (!optionsResponse.ok) {
+                    throw new Error("The server did not start a passkey sign in.");
+                }
+                const credential = await navigator.credentials.get({
+                    publicKey: UserAccess.toRequestOptions(await optionsResponse.json())
+                });
+                const response = await fetch("../api/auth/passkey/login", {
+                    method: "POST",
+                    headers: { "Accept": "application/json", "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        credential: UserAccess.credentialToJSON(credential),
+                        csrfToken: this.csrfToken
+                    })
+                });
+                const data = await response.json();
+                if (response.ok && data.loggedIn) {
+                    // The session id was regenerated on sign in; pick up the new
+                    // session's CSRF token and user info.
+                    const sessionResponse = await fetch("../api/auth/session", { headers: { "Accept": "application/json" } });
+                    this.showApp(await sessionResponse.json());
+                } else {
+                    this.showLoginError(data.detail || "Passkey sign in failed.");
+                }
+            } catch (error) {
+                console.error("Error during passkey sign in:", error);
+                // NotAllowedError covers a cancelled or timed-out prompt as well as
+                // an authenticator with no passkey for this site.
+                this.showLoginError(error.name === "NotAllowedError" ? "Passkey sign in was cancelled, or no passkey was found." : "Passkey sign in failed.");
+            }
+        }
+
+        // Wires up the "Passkeys" dialog, where the signed-in user manages
+        // their own passkeys. Runs once, from init().
+        setUpPasskeys() {
+            if (!window.PublicKeyCredential || !this.passkeysEnabled) {
+                return;
+            }
+            this.passkeysButton.classList.remove("d-none");
+            this.passkeysModal.addEventListener("show.bs.modal", () => this.loadPasskeys());
+            this.addPasskeyForm.addEventListener("submit", (event) => {
+                event.preventDefault();
+                this.addPasskey();
+            });
+        }
+
+        async loadPasskeys() {
+            try {
+                const response = await fetch("../api/auth/passkeys", { headers: { "Accept": "application/json" } });
+                const data = await response.json();
+                if (!response.ok) {
+                    this.showError(this.passkeysModal, data.detail || "Could not load your passkeys.");
+                    return;
+                }
+                this.renderPasskeys(this.passkeyList, data.passkeys, (passkey) => this.deletePasskey(passkey));
+            } catch (error) {
+                console.error("Error loading passkeys:", error);
+                this.showError(this.passkeysModal, "Network error while loading your passkeys.");
+            }
+        }
+
+        // Fills a passkey table, for the user's own dialog and the
+        // administrator view alike. Builds the rows with textContent only:
+        // passkey names are user input.
+        renderPasskeys(list, passkeys, onRemove) {
+            const rows = passkeys.map((passkey) => {
+                const row = document.createElement("tr");
+                const values = [
+                    passkey.name,
+                    UserAccess.formatDate(passkey.created),
+                    UserAccess.formatDate(passkey.lastUsed),
+                    passkey.synced ? "Yes" : "No"
+                ];
+                for (const value of values) {
+                    const cell = document.createElement("td");
+                    cell.textContent = value;
+                    row.append(cell);
+                }
+                const actions = document.createElement("td");
+                const removeButton = document.createElement("button");
+                removeButton.type = "button";
+                removeButton.className = "btn btn-outline-danger btn-sm";
+                removeButton.textContent = "Remove";
+                removeButton.addEventListener("click", () => onRemove(passkey));
+                actions.append(removeButton);
+                row.append(actions);
+                return row;
+            });
+            if (rows.length === 0) {
+                const row = document.createElement("tr");
+                const cell = document.createElement("td");
+                cell.colSpan = 5;
+                cell.className = "text-secondary";
+                cell.textContent = "No passkeys yet.";
+                row.append(cell);
+                rows.push(row);
+            }
+            list.replaceChildren(...rows);
+        }
+
+        // The server only starts a registration when the user signed in or
+        // confirmed their password a few minutes ago. When it asks for that,
+        // the password field appears; the next submit confirms it first.
+        async addPasskey() {
+            this.clearError(this.passkeysModal);
+            try {
+                if (this.passkeyReauthPassword.value !== "") {
+                    const confirmResponse = await fetch("../api/auth/confirm-password", {
+                        method: "POST",
+                        headers: { "Accept": "application/json", "Content-Type": "application/json" },
+                        body: JSON.stringify({ password: this.passkeyReauthPassword.value, csrfToken: this.csrfToken })
+                    });
+                    this.passkeyReauthPassword.value = "";
+                    if (!confirmResponse.ok) {
+                        const data = await confirmResponse.json();
+                        this.showError(this.passkeysModal, data.detail || "That password is not correct.");
+                        return;
+                    }
+                    this.passkeyReauth.classList.add("d-none");
+                }
+                const optionsResponse = await fetch("../api/auth/passkey/register/options", {
+                    method: "POST",
+                    headers: { "Accept": "application/json" }
+                });
+                const options = await optionsResponse.json();
+                if (!optionsResponse.ok) {
+                    if (options.reauthenticate) {
+                        this.passkeyReauth.classList.remove("d-none");
+                        this.passkeyReauthPassword.focus();
+                    }
+                    this.showError(this.passkeysModal, options.detail || "Could not start adding a passkey.");
+                    return;
+                }
+                const credential = await navigator.credentials.create({ publicKey: UserAccess.toCreationOptions(options) });
+                const response = await fetch("../api/auth/passkey/register", {
+                    method: "POST",
+                    headers: { "Accept": "application/json", "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        credential: UserAccess.credentialToJSON(credential),
+                        name: new FormData(this.addPasskeyForm).get("name")
+                    })
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    this.showError(this.passkeysModal, data.detail || "Could not add the passkey.");
+                    return;
+                }
+                this.addPasskeyForm.reset();
+                await this.loadPasskeys();
+            } catch (error) {
+                console.error("Error adding passkey:", error);
+                // InvalidStateError: the authenticator already holds one of this
+                // user's passkeys, which the options listed as excluded.
+                const messages = {
+                    InvalidStateError: "This device already has a passkey for your account.",
+                    NotAllowedError: "Adding the passkey was cancelled."
+                };
+                this.showError(this.passkeysModal, messages[error.name] || "Could not add the passkey.");
+            }
+        }
+
+        async deletePasskey(passkey) {
+            await this.removePasskey(
+                "../api/auth/passkeys/" + encodeURIComponent(passkey.id),
+                "Remove the passkey \"" + passkey.name + "\"? It will no longer sign you in.",
+                this.passkeysModal,
+                () => this.loadPasskeys()
+            );
+        }
+
+        // Shows a user's passkeys in the update dialog, so an administrator
+        // can remove one the user has lost. Stays hidden when the server has
+        // no passkey support.
+        async loadUserPasskeys(userId) {
+            if (!this.passkeysEnabled) {
+                return;
+            }
+            this.updateUserPasskeys.classList.remove("d-none");
+            this.updateUserPasskeyList.replaceChildren();
+            try {
+                const response = await fetch("../api/admin/users/" + encodeURIComponent(userId) + "/passkeys", {
+                    headers: { "Accept": "application/json" }
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    this.showError(this.updateUserModal, data.detail || "Could not load the user's passkeys.");
+                    return;
+                }
+                this.renderPasskeys(this.updateUserPasskeyList, data.passkeys, (passkey) => this.deleteUserPasskey(userId, passkey));
+            } catch (error) {
+                console.error("Error loading the user's passkeys:", error);
+                this.showError(this.updateUserModal, "Network error while loading the user's passkeys.");
+            }
+        }
+
+        async deleteUserPasskey(userId, passkey) {
+            await this.removePasskey(
+                "../api/admin/users/" + encodeURIComponent(userId) + "/passkeys/" + encodeURIComponent(passkey.id),
+                "Remove the passkey \"" + passkey.name + "\"? The user can no longer sign in with it.",
+                this.updateUserModal,
+                () => this.loadUserPasskeys(userId)
+            );
+        }
+
+        async removePasskey(url, question, modalElement, reload) {
+            if (!window.confirm(question)) {
+                return;
+            }
+            this.clearError(modalElement);
+            try {
+                const response = await fetch(url, { method: "DELETE", headers: { "Accept": "application/json" } });
+                if (response.status !== 204) {
+                    const data = await response.json();
+                    this.showError(modalElement, data.detail || "Could not remove the passkey.");
+                    return;
+                }
+                await reload();
+            } catch (error) {
+                console.error("Error removing passkey:", error);
+                this.showError(modalElement, "Could not remove the passkey.");
+            }
+        }
+
+        static formatDate(value) {
+            return value ? new Date(value).toLocaleString() : "Never";
+        }
+
+        // The server speaks WebAuthn's JSON form, where every binary value is
+        // unpadded base64url, while navigator.credentials works on
+        // ArrayBuffers. These helpers convert at that boundary.
+        static base64UrlToBuffer(value) {
+            const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
+            const binary = atob(base64.padEnd(base64.length + (4 - base64.length % 4) % 4, "="));
+            return Uint8Array.from(binary, (character) => character.charCodeAt(0)).buffer;
+        }
+
+        static bufferToBase64Url(buffer) {
+            const binary = String.fromCharCode(...new Uint8Array(buffer));
+            return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+        }
+
+        static toCreationOptions(options) {
+            return {
+                ...options,
+                challenge: UserAccess.base64UrlToBuffer(options.challenge),
+                user: { ...options.user, id: UserAccess.base64UrlToBuffer(options.user.id) },
+                excludeCredentials: (options.excludeCredentials || []).map((descriptor) => ({
+                    ...descriptor,
+                    id: UserAccess.base64UrlToBuffer(descriptor.id)
+                }))
+            };
+        }
+
+        static toRequestOptions(options) {
+            return {
+                ...options,
+                challenge: UserAccess.base64UrlToBuffer(options.challenge),
+                allowCredentials: (options.allowCredentials || []).map((descriptor) => ({
+                    ...descriptor,
+                    id: UserAccess.base64UrlToBuffer(descriptor.id)
+                }))
+            };
+        }
+
+        // Serializes a PublicKeyCredential the way credential.toJSON() does in
+        // the browsers that have it, which is the form PasskeyAuth reads.
+        static credentialToJSON(credential) {
+            const response = credential.response;
+            const json = {
+                id: credential.id,
+                rawId: UserAccess.bufferToBase64Url(credential.rawId),
+                type: credential.type,
+                response: { clientDataJSON: UserAccess.bufferToBase64Url(response.clientDataJSON) }
+            };
+            if (response.attestationObject) {
+                json.response.attestationObject = UserAccess.bufferToBase64Url(response.attestationObject);
+                json.response.transports = response.getTransports ? response.getTransports() : [];
+            } else {
+                json.response.authenticatorData = UserAccess.bufferToBase64Url(response.authenticatorData);
+                json.response.signature = UserAccess.bufferToBase64Url(response.signature);
+                json.response.userHandle = response.userHandle ? UserAccess.bufferToBase64Url(response.userHandle) : null;
+            }
+            return json;
+        }
+
         init() {
             this.loadUsers();
             this.loadGroups();
+            this.setUpPasskeys();
             this.createUserForm.addEventListener("submit", (event) => {
                 event.preventDefault();
                 this.createUser();
@@ -156,6 +480,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         loadUser = async function (id) {
+            this.loadUserPasskeys(id);
             fetch("../api/scim/users" + "/" + id)
                 .then(response => response.json())
                 .then(data => {
@@ -678,6 +1003,7 @@ document.addEventListener("DOMContentLoaded", function () {
         .then(response => response.json())
         .then(session => {
             window.UserAccess.csrfToken = session.csrfToken || "";
+            window.UserAccess.passkeysEnabled = session.passkeys === true;
             if (session.loggedIn) {
                 window.UserAccess.showApp(session);
             } else {

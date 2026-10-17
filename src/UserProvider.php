@@ -120,7 +120,8 @@ class UserProvider implements UserProviderInterface
         $id = trim(strtolower($id));
         // The whole delete-then-strip-from-groups sequence runs under one
         // exclusive lock so it is atomic relative to other writers (the nested
-        // GroupProvider::update calls re-enter the same reentrant lock).
+        // GroupProvider::update and PasskeyProvider::delete calls re-enter the
+        // same reentrant lock).
         Lock::exclusive(function () use ($id) {
             if ($this->exists('id', $id)) {
                 self::$db->delete($id);
@@ -131,6 +132,14 @@ class UserProvider implements UserProviderInterface
                     if ($group->hasMember($id)) {
                         $group->removeMember($id);
                         $groupProvider->update($group);
+                    }
+                }
+                // A passkey only means something next to its user, so it goes
+                // too — but only from a store the host actually configured.
+                if (PasskeyProvider::hasInstance()) {
+                    $passkeyProvider = PasskeyProvider::getInstance();
+                    foreach ($passkeyProvider->find('userId', $id) as $passkey) {
+                        $passkeyProvider->delete($passkey->getId());
                     }
                 }
             } else {
