@@ -1368,6 +1368,7 @@ class SCIM
             case 'EXCEPTION_DUPLICATE_EMAIL':
             case 'EXCEPTION_USER_ALREADY_EXIST':
             case 'EXCEPTION_GROUP_ALREADY_EXIST':
+            case 'EXCEPTION_PASSKEY_ALREADY_EXIST':
                 return 409;
             default:
                 return 400;
@@ -1451,6 +1452,16 @@ class SCIM
                 return 'The requested resource does not exist.';
             case 'EXCEPTION_EMPTY_ID':
                 return 'A required id value was empty.';
+            case 'EXCEPTION_INVALID_PASSKEY':
+                return 'The passkey data is malformed.';
+            case 'EXCEPTION_INVALID_PASSKEY_NAME':
+                return 'A passkey name may be at most ' . Passkey::NAME_MAX_LENGTH . ' characters long and may not contain control characters.';
+            case 'EXCEPTION_PASSKEY_ALREADY_EXIST':
+                return 'That passkey is already registered.';
+            case 'EXCEPTION_PASSKEY_CEREMONY_MISSING':
+                return 'No passkey request is pending, or it has expired. Start again.';
+            case 'EXCEPTION_PASSKEY_VERIFICATION_FAILED':
+                return 'The passkey could not be verified.';
             default:
                 return 'The request could not be completed.';
         }

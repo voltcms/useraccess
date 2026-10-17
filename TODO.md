@@ -32,6 +32,19 @@ been dropped — git history is the record.
   `ServiceProviderConfig`; filtering handles a single `attribute eq "value"` expression only. Filtering on
   custom attributes is also unsupported.
 
+## Passkeys
+
+- [ ] **No admin-side passkey management.** Users list and remove their own passkeys; an administrator cannot
+  see or revoke another user's (e.g. a lost phone) short of deleting the user. Needs an admin API — over SCIM
+  that would be a custom resource or extension, which is a design call.
+- [ ] **Conditional mediation (passkey autofill) is not wired up.** The library side works as is (username-less
+  request options); the demo would need `mediation: "conditional"` and `autocomplete="username webauthn"`.
+- [ ] **Attestation is accepted, not evaluated.** Registration asks for `none`, accepts every format that needs no
+  metadata service, and stores the trust path. Restricting authenticator models would need webauthn-lib's
+  metadata-statement support (FIDO MDS) plus a policy.
+- [ ] **webauthn-lib is a hard dependency** and brings Symfony's serializer stack with it, even for hosts that never
+  enable passkeys. Moving it to `suggest` would keep the base install light at the cost of a runtime check.
+
 ## Tooling
 
 - [ ] **No JS linter.** There is no ESLint or Prettier config, so nothing checks `demo/ui/js/`. Both JS files

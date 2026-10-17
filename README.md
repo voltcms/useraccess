@@ -4,8 +4,9 @@
 
 A small, dependency‑light **PHP 8 library for user and access management**. It stores
 users and groups in a flat‑file JSON database and exposes them through a **SCIM 2.0**
-(RFC 7643/7644) REST API, plus session, HTTP Basic, and OAuth Bearer authentication
-helpers for protecting pages and provisioning from an identity provider (Okta, Entra ID, …).
+(RFC 7643/7644) REST API, plus session, passkey (WebAuthn), HTTP Basic, and OAuth Bearer
+authentication helpers for protecting pages and provisioning from an identity provider (Okta,
+Entra ID, …).
 
 It is published as a Composer package (PSR‑4 namespace `VoltCMS\UserAccess\` → `src/`) and is
 meant to be **embedded in a host application**, not run standalone. The `demo/` directory shows
@@ -27,6 +28,7 @@ a complete, fully‑authenticated integration.
 - [The SCIM API](#the-scim-api)
 - [Custom user attributes](#custom-user-attributes)
 - [Authentication](#authentication)
+- [Passkeys](#passkeys)
 - [Security & hardening](#security--hardening)
 - [Configuration reference](#configuration-reference)
 - [The demo](#the-demo)
@@ -44,7 +46,8 @@ a complete, fully‑authenticated integration.
   plus discovery (`/ServiceProviderConfig`, `/ResourceTypes`, `/Schemas`) and `/Me`.
   Responses use `application/scim+json`.
 - **Three authentication modes**, usable together:
-  - PHP **session** login (CSRF‑protected, session‑fixation hardened);
+  - PHP **session** login (CSRF‑protected, session‑fixation hardened), by password or by
+    **passkey**;
   - HTTP **Basic**;
   - OAuth **Bearer** token (for IdP provisioning).
 - **Secure by default** — the SCIM router requires an authenticated administrator unless you
@@ -53,6 +56,9 @@ a complete, fully‑authenticated integration.
   shared‑storage brute‑force lockout, optional HTTPS enforcement + HSTS, proxy‑aware HTTPS
   detection, data‑directory web‑access protection, and an append‑only **audit log** of admin
   actions.
+- **Passkeys (WebAuthn)** — username‑less, phishing‑resistant sign‑in built on
+  [web-auth/webauthn-lib](https://github.com/web-auth/webauthn-lib), with self‑service
+  registration and removal.
 - **Custom user attributes** — store host‑defined fields on a user; they are exposed over SCIM
   through a schema extension.
 - **No SQL** — a flat‑file JSON store (`voltcms/filedb`) with a process‑wide write mutex.
@@ -60,7 +66,7 @@ a complete, fully‑authenticated integration.
 
 ## Requirements
 
-- **PHP ≥ 8.2** (developed against 8.4).
+- **PHP ≥ 8.2** (developed against 8.4) with the `openssl` extension (passkey signatures).
 - **Composer 2**.
 - A web server that routes unknown paths to a front controller and passes the `Authorization`
   header through (Apache rewrite provided in `demo/api/.htaccess`; nginx `try_files` works too).
@@ -131,12 +137,14 @@ group. Membership in it == administrator. Seed your first admin once (see the de
 | `User`, `Group` | Plain entities. Field validation lives in setters; `toSCIM()`/`fromSCIM()` convert to/from SCIM. |
 | `UserProvider`, `GroupProvider` | Singleton persistence (CRUD) over `voltcms/filedb`. Depend on the `*ProviderInterface`. |
 | `SCIM` | The SCIM 2.0 router + request handlers — the main integration point. |
-| `SessionAuth` | Session login/logout, CSRF, group enforcement. |
+| `SessionAuth` | Session login/logout (password or passkey), CSRF, group enforcement. |
+| `Passkey`, `PasskeyProvider` | A user's WebAuthn credentials and their FileDB store. |
+| `PasskeyAuth` | Passkey registration and sign‑in ceremonies (wraps webauthn-lib). |
 | `HeaderAuth` / `BearerAuth` | Stateless HTTP Basic / OAuth Bearer checks. |
 | `LoginThrottle` | Shared brute‑force lockout (identifier + IP). |
 | `Lock` | Process‑wide reentrant write mutex for the flat‑file store. |
 | `AuditLog` | Append‑only JSON‑Lines audit trail. |
-| `Utils` | `isHttps()`, `protectDirectory()`, page‑protection helpers. |
+| `Utils` | `isHttps()`, `protectDirectory()`, base64url, page‑protection helpers. |
 
 - **IDs** are UUIDs. `_id`, `_created`, `_modified` are managed metadata.
 - **Passwords** are hashed with `password_hash(PASSWORD_DEFAULT)`; the hash is stored on disk
@@ -285,6 +293,70 @@ A valid `Authorization: Bearer <token>` authorizes the request as the provisioni
 stored only as SHA‑256 hashes and compared in constant time. `ServiceProviderConfig`
 advertises `oauthbearertoken` once configured.
 
+## Passkeys
+
+Passkeys let users sign in to the **session** with a fingerprint, face or device PIN instead of
+a password. The WebAuthn ceremonies are delegated to
+[web-auth/webauthn-lib](https://github.com/web-auth/webauthn-lib), the framework‑independent
+library of [webauthn-framework](https://github.com/web-auth/webauthn-framework); UserAccess adds
+storage, session integration and the policy below.
+
+```php
+use VoltCMS\UserAccess\PasskeyAuth;
+use VoltCMS\UserAccess\PasskeyProvider;
+
+$passkeyProvider = PasskeyProvider::getInstance(['directory' => '/var/lib/voltcms/passkeys']);
+$session  = SessionAuth::getInstance($userProvider, $groupProvider); // holds the challenges
+$passkeys = new PasskeyAuth(
+    $userProvider,
+    $passkeyProvider,
+    'example.com',             // relying party id: the domain passkeys are scoped to
+    'Example',                 // name the browser shows
+    ['https://example.com']    // exact origins the UI is served from
+);
+$passkeys->setAuditLog(new AuditLog('/var/log/voltcms'));   // optional
+```
+
+Each ceremony takes two requests to endpoints you define (`demo/api/index.php` has all of them):
+
+| Step | Server | Browser |
+|------|--------|---------|
+| Register (signed in) | `$passkeys->getRegistrationOptions($user)` | `navigator.credentials.create({ publicKey })` |
+| | `$passkeys->register($user, $credentialJson, $name)` → `Passkey` | |
+| Sign in | `$passkeys->getLoginOptions()` | `navigator.credentials.get({ publicKey })` |
+| | `$session->loginWithPasskey($passkeys, $credentialJson, $csrfToken)` → `bool` | |
+| Manage | `$passkeys->getPasskeys($user)`, `$passkeys->deletePasskey($user, $id)` | |
+
+Options come back in WebAuthn's JSON form (binary values as unpadded base64url). Convert them
+to `ArrayBuffer`s for `navigator.credentials` and send the credential back serialized the way
+`credential.toJSON()` does; `demo/ui/js/useraccess.js` has small helpers for both.
+
+- **Username‑less sign‑in.** The login options name no credentials: the authenticator offers
+  its discoverable passkeys and the one used identifies the account, so the endpoint reveals
+  nothing about which users exist. Registration therefore requires a discoverable credential.
+- **User verification is required** (biometric or PIN) in both ceremonies, because a passkey
+  replaces the password rather than adding a second factor.
+- **Single‑use challenges** live in the session and expire with the ceremony (5 minutes by
+  default). A registration started for one user cannot be finished for another.
+- **Relying party id and origins are configuration**, never derived from the `Host` header —
+  that is what keeps passkeys phishing‑resistant.
+- **Clone detection:** the signature counter is stored, and one that goes backwards fails the
+  sign‑in. An inactive user's passkeys stop working.
+- **Deleting a user deletes their passkeys**, provided `PasskeyProvider` is initialized in the
+  same bootstrap as `UserProvider`.
+- Like Bearer tokens, passkey sign‑in is not run through `LoginThrottle`: there is no secret to
+  guess.
+- **Registration trusts whoever holds the session.** A hijacked session could add the
+  attacker's own passkey and keep access past a password change, so consider asking for the
+  password again before `getRegistrationOptions()`. Registrations and removals are recorded
+  when an audit log is set.
+
+Failures throw `EXCEPTION_PASSKEY_VERIFICATION_FAILED` (the reason goes to the error log),
+`EXCEPTION_PASSKEY_CEREMONY_MISSING` (no pending or an expired challenge),
+`EXCEPTION_INVALID_PASSKEY_NAME`, or `EXCEPTION_ENTRY_NOT_EXIST` from `deletePasskey()`.
+Browsers offer WebAuthn only in a secure context: serve the UI over HTTPS, or from
+`http://localhost` during development.
+
 ## Security & hardening
 
 | Area | What you get | How |
@@ -293,6 +365,7 @@ advertises `oauthbearertoken` once configured.
 | **Transport** | Refuse plaintext HTTP, send HSTS | `$app->setHttpsPolicy(true)` (proxy‑aware via `X-Forwarded-Proto`) |
 | **Passwords** | bcrypt, 8–72 char policy | enforced in `User::validatePassword` |
 | **Brute force** | Lockout by identifier + IP, survives cookie drops | `LoginThrottle` (429 after `maxLoginAttempts` within 900s) |
+| **Passkeys** | Phishing‑resistant, user‑verified sign‑in; single‑use challenges; clone detection | `PasskeyAuth` + `SessionAuth::loginWithPasskey()` |
 | **Data at rest** | Deny‑all `.htaccess` + `index.html` dropped into data dirs | `Utils::protectDirectory()`, automatic |
 | **Audit** | Append‑only JSON‑Lines of every admin mutation | `$app->setAuditLogDirectory($dir)` |
 | **Concurrency** | Serialized writes, atomic user‑delete | `Lock::exclusive()`, automatic |
@@ -322,6 +395,11 @@ $app->runRouter();
 
 // Session tuning
 SessionAuth::getInstance($userProvider, $groupProvider, $maxLoginAttempts = 10, $refreshTime = 60);
+
+// Passkeys
+PasskeyProvider::getInstance(['directory' => '/path/out/of/webroot/passkeys']);
+$passkeys = new PasskeyAuth($userProvider, $passkeyProvider, $rpId, $rpName, $allowedOrigins, $timeoutMs = 300000);
+$passkeys->setAuditLog(new AuditLog('/var/log/voltcms'));
 ```
 
 ## The demo
@@ -338,6 +416,13 @@ cd demo/api && php -S localhost:8000   # behind an Apache-style rewrite to index
 The demo seeds an `Administrator` user (hardcoded password — **demo only**), enforces auth,
 exposes `/auth/session|login|logout`, and gates the UI behind a login form. Set
 `USERACCESS_SCIM_BEARER_TOKEN` to also allow Bearer provisioning. It logs to `demo/data/audit`.
+
+Passkeys work out of the box at `http://localhost:8000`: sign in, open **Passkeys** to add one,
+then use **Sign in with a passkey**. The endpoints are `/auth/passkey/login/options`,
+`/auth/passkey/login`, `/auth/passkey/register/options`, `/auth/passkey/register`,
+`GET /auth/passkeys` and `DELETE /auth/passkeys/{id}`. On any other host, export
+`USERACCESS_PASSKEY_RP_ID` (e.g. `example.com`) and `USERACCESS_PASSKEY_ORIGINS`
+(comma‑separated, e.g. `https://example.com`).
 
 ## Testing & CI
 
@@ -361,7 +446,9 @@ committing.
 5. For IdP provisioning, `**$app->setBearerTokens([...])**` with a long random secret from
    the environment; rotate by listing two.
 6. Never ship hardcoded credentials (the demo's seed is demo‑only).
-7. Back up the data directory (see [Not yet implemented](#not-yet-implemented)).
+7. For passkeys, set the relying party id to your domain and list the exact HTTPS origins your
+   UI is served from. Changing the domain later orphans existing passkeys.
+8. Back up the data directory (see [Not yet implemented](#not-yet-implemented)).
 
 ## For AI agents (integrating into another project)
 
@@ -384,7 +471,8 @@ library.
    so loudly.
 5. **Pick the auth mode(s)** for the host:
    - Browser UI → `SessionAuth` login flow (see `demo/api/index.php` + `demo/ui/js/useraccess.js`
-     for a working reference, including CSRF).
+     for a working reference, including CSRF), optionally with passkeys via `PasskeyAuth`
+     (see [Passkeys](#passkeys)).
    - IdP provisioning (Okta/Entra) → `setBearerTokens([...])` from an env var.
    - Server‑to‑server scripts → HTTP Basic or Bearer.
 6. **Turn on hardening**: `setHttpsPolicy(true)` in production, `setAuditLogDirectory(...)`,

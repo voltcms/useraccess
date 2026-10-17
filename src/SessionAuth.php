@@ -196,6 +196,34 @@ class SessionAuth
         return $result;
     }
 
+    // Signs in with a passkey: $passkeyAuth verifies the assertion from
+    // navigator.credentials.get() against the challenge it issued, and the
+    // passkey's user gets the same session a password login opens. A failure
+    // logs the session out and answers 401 like login() does, but neither
+    // counts against the password attempt limit nor is throttled: there is no
+    // secret to guess (see PasskeyAuth).
+    public function loginWithPasskey(PasskeyAuth $passkeyAuth, string $response, ?string $csrfToken = null): bool
+    {
+        $user = null;
+        if (empty($csrfToken) || hash_equals($_SESSION[self::UA_CSRF], $csrfToken)) {
+            try {
+                $user = $passkeyAuth->authenticate($response);
+            } catch (Exception $e) {
+                error_log('Passkey login failed: ' . $e->getMessage());
+            }
+        }
+        if ($user === null) {
+            $this->setSessionInfo(null, $_SESSION[self::UA_ATTEMPTS]);
+            http_response_code(401);
+            return false;
+        }
+        if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
+            session_regenerate_id(true);
+        }
+        $this->setSessionInfo($user, 0);
+        return true;
+    }
+
     // Exposes the per-session CSRF token so a login form can echo it back and
     // exercise the CSRF check in login().
     public function getCsrfToken(): string

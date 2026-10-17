@@ -13,6 +13,10 @@ class Sanitizer
     // bound is checked separately against ATTRIBUTE_NAME_MAX_LENGTH.
     public const REGEX_ATTRIBUTE_NAME = '/^[A-Za-z][A-Za-z0-9_\-]*$/';
     public const ATTRIBUTE_NAME_MAX_LENGTH = 64;
+    // The 8-4-4-4-12 hex shape of a FileDB document id (and of an authenticator
+    // AAGUID). Ids become file names, so any id that arrives from a client must
+    // match this before it reaches a provider.
+    public const REGEX_UUID = '/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/';
 
     public static function sanitizeString(string $value): string
     {

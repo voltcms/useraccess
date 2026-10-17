@@ -128,6 +128,25 @@ class Utils
         header($key . ': ' . $value);
     }
 
+    // Unpadded base64url (RFC 4648 §5): the encoding WebAuthn uses for every
+    // binary value that crosses JSON, and the form passkey ids are stored in.
+    public static function base64UrlEncode(string $data): string
+    {
+        return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+    }
+
+    // Decodes base64url with or without padding. Returns null for anything
+    // outside the alphabet, so callers can reject malformed input instead of
+    // getting the lenient partial decode base64_decode() falls back to.
+    public static function base64UrlDecode(string $data): ?string
+    {
+        if (!preg_match('/^[A-Za-z0-9_-]*={0,2}$/', $data)) {
+            return null;
+        }
+        $decoded = base64_decode(strtr($data, '-_', '+/'), true);
+        return $decoded === false ? null : $decoded;
+    }
+
     // Determines whether the current request is being served over HTTPS.
     // Honors the standard reverse-proxy / load-balancer forwarding headers
     // (`X-Forwarded-Proto`, `X-Forwarded-SSL`) in addition to the direct
