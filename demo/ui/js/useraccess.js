@@ -24,6 +24,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
         initialized = false;
         csrfToken = "";
+        // Set from /auth/session: false when the server lacks webauthn-lib.
+        passkeysEnabled = false;
 
         // Show the login view and hide the app. Binds the login form once.
         showLogin = function () {
@@ -111,9 +113,10 @@ document.addEventListener("DOMContentLoaded", function () {
             this.showLogin();
         }
 
-        // Offers passkey sign-in when the browser supports WebAuthn. Binds once.
+        // Offers passkey sign-in when both the browser and the server support
+        // it. Binds once.
         setUpPasskeyLogin() {
-            if (!window.PublicKeyCredential || this.passkeyLoginButton.dataset.bound) {
+            if (!window.PublicKeyCredential || !this.passkeysEnabled || this.passkeyLoginButton.dataset.bound) {
                 return;
             }
             this.passkeyLoginButton.dataset.bound = "1";
@@ -169,7 +172,7 @@ document.addEventListener("DOMContentLoaded", function () {
         // Wires up the "Passkeys" dialog, where the signed-in user manages
         // their own passkeys. Runs once, from init().
         setUpPasskeys() {
-            if (!window.PublicKeyCredential) {
+            if (!window.PublicKeyCredential || !this.passkeysEnabled) {
                 return;
             }
             this.passkeysButton.classList.remove("d-none");
@@ -932,6 +935,7 @@ document.addEventListener("DOMContentLoaded", function () {
         .then(response => response.json())
         .then(session => {
             window.UserAccess.csrfToken = session.csrfToken || "";
+            window.UserAccess.passkeysEnabled = session.passkeys === true;
             if (session.loggedIn) {
                 window.UserAccess.showApp(session);
             } else {

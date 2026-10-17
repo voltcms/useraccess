@@ -5,8 +5,9 @@ exposed as a **SCIM 2.0** REST API (RFC 7643/7644) with session (password or pas
 package, PSR-4 `VoltCMS\UserAccess\` → `src/`; embedded in a host app, not run standalone. `src/` holds the entities (`User`,
 `Group`, `Passkey`), their providers, `SCIM` (router + handlers, the main entry point), the auth classes (`SessionAuth`, `HeaderAuth`,
 `BearerAuth`, `PasskeyAuth`), `LoginThrottle`, `Lock`, `AuditLog`, `Sanitizer`, `Utils` and the dead `RestApp`; `demo/api` wires them
-together, `demo/ui` is a Bootstrap 5 admin UI. Passkeys are the one heavy dependency: `web-auth/webauthn-lib` (the standalone
-library of webauthn-framework) pulls in Symfony's serializer stack. Open work: **TODO.md**.
+together, `demo/ui` is a Bootstrap 5 admin UI. Passkeys rely on `web-auth/webauthn-lib` (the standalone library of
+webauthn-framework, ~30 packages with Symfony's serializer stack), which is therefore **optional**: `suggest` + `require-dev`,
+with a `conflict` pinning an installed copy to ^5.3. Open work: **TODO.md**.
 
 ## Build & test
 
@@ -52,7 +53,10 @@ composer phpcs                      # coding standard (composer phpcbf autofixes
   ceremonies. Every verification failure surfaces as `EXCEPTION_PASSKEY_VERIFICATION_FAILED` with the real reason in
   `error_log`. `Passkey` stores binary values as canonical unpadded base64url (`Utils::base64UrlEncode/Decode`) and converts
   to webauthn-lib's `CredentialRecord` only at the ceremony boundary, so the on-disk keys stay independent of the library.
-  Passkey management (list/delete) is self-service only; nothing passkey-related is exposed over SCIM.
+  Passkey management (list/delete) is self-service only; nothing passkey-related is exposed over SCIM. Because webauthn-lib is
+  optional, only `PasskeyAuth` (and the `Passkey` record converters it calls) may touch `Webauthn\`/Symfony classes; everything
+  else, `Passkey`/`PasskeyProvider` included, must load and run without them. `PasskeyAuth::isAvailable()` reports whether the
+  package is installed and the constructor throws when it isn't; the demo checks the former and goes password-only.
 
 ## Coding standards
 

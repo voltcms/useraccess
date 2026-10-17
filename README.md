@@ -56,9 +56,9 @@ a complete, fully‑authenticated integration.
   shared‑storage brute‑force lockout, optional HTTPS enforcement + HSTS, proxy‑aware HTTPS
   detection, data‑directory web‑access protection, and an append‑only **audit log** of admin
   actions.
-- **Passkeys (WebAuthn)** — username‑less, phishing‑resistant sign‑in built on
+- **Passkeys (WebAuthn)**, optional — username‑less, phishing‑resistant sign‑in built on
   [web-auth/webauthn-lib](https://github.com/web-auth/webauthn-lib), with self‑service
-  registration and removal.
+  registration and removal. Install that package only if you want passkeys.
 - **Custom user attributes** — store host‑defined fields on a user; they are exposed over SCIM
   through a schema extension.
 - **No SQL** — a flat‑file JSON store (`voltcms/filedb`) with a process‑wide write mutex.
@@ -66,7 +66,8 @@ a complete, fully‑authenticated integration.
 
 ## Requirements
 
-- **PHP ≥ 8.2** (developed against 8.4) with the `openssl` extension (passkey signatures).
+- **PHP ≥ 8.2** (developed against 8.4).
+- For passkeys only: `web-auth/webauthn-lib` ^5.3 and the `openssl` extension.
 - **Composer 2**.
 - A web server that routes unknown paths to a front controller and passes the `Authorization`
   header through (Apache rewrite provided in `demo/api/.htaccess`; nginx `try_files` works too).
@@ -90,7 +91,14 @@ This package is distributed via its Git repository. Add it to your project's `co
 composer update voltcms/useraccess
 ```
 
-Or, working inside this repository directly:
+Passkeys are optional. Their library brings about 30 packages (~4.5 MB), so it is a Composer
+`suggest` rather than a requirement; add it only if you use [`PasskeyAuth`](#passkeys):
+
+```bash
+composer require web-auth/webauthn-lib:^5.3
+```
+
+Or, working inside this repository directly (dev dependencies include webauthn-lib):
 
 ```bash
 composer install      # install dependencies into vendor/
@@ -299,7 +307,10 @@ Passkeys let users sign in to the **session** with a fingerprint, face or device
 a password. The WebAuthn ceremonies are delegated to
 [web-auth/webauthn-lib](https://github.com/web-auth/webauthn-lib), the framework‑independent
 library of [webauthn-framework](https://github.com/web-auth/webauthn-framework); UserAccess adds
-storage, session integration and the policy below.
+storage, session integration and the policy below. That library is optional — install it with
+`composer require web-auth/webauthn-lib:^5.3`. Without it everything else works;
+`PasskeyAuth::isAvailable()` returns `false` and constructing `PasskeyAuth` throws an exception
+saying what to install, so gate your passkey routes on the former.
 
 ```php
 use VoltCMS\UserAccess\PasskeyAuth;

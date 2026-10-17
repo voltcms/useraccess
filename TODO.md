@@ -42,8 +42,8 @@ been dropped — git history is the record.
 - [ ] **Attestation is accepted, not evaluated.** Registration asks for `none`, accepts every format that needs no
   metadata service, and stores the trust path. Restricting authenticator models would need webauthn-lib's
   metadata-statement support (FIDO MDS) plus a policy.
-- [ ] **webauthn-lib is a hard dependency** and brings Symfony's serializer stack with it, even for hosts that never
-  enable passkeys. Moving it to `suggest` would keep the base install light at the cost of a runtime check.
+- [x] **webauthn-lib is optional.** It is a `suggest` (plus `require-dev` for the tests and a `conflict` pinning ^5.3), so
+  hosts without passkeys keep the two-package install. `PasskeyAuth::isAvailable()` is the runtime check.
 
 ## Tooling
 

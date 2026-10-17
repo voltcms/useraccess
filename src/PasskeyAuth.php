@@ -22,6 +22,7 @@ use Webauthn\AuthenticatorAssertionResponseValidator;
 use Webauthn\AuthenticatorAttestationResponse;
 use Webauthn\AuthenticatorAttestationResponseValidator;
 use Webauthn\AuthenticatorSelectionCriteria;
+use Webauthn\CredentialRecord;
 use Webauthn\CeremonyStep\CeremonyStepManagerFactory;
 use Webauthn\Denormalizer\WebauthnSerializerFactory;
 use Webauthn\PublicKeyCredential;
@@ -53,6 +54,11 @@ use Webauthn\PublicKeyCredentialUserEntity;
 // Like Bearer tokens, failed sign-ins are not run through LoginThrottle: an
 // assertion is a signature over a fresh challenge, so there is nothing to
 // guess.
+//
+// webauthn-lib is an optional dependency (composer "suggest"): it brings about
+// thirty packages, which hosts that never offer passkeys should not carry. This
+// is the only class that needs it to load, so check isAvailable() before
+// wiring passkey routes.
 class PasskeyAuth
 {
     public const SESSION_KEY = 'UA_PASSKEY_CEREMONY';
@@ -79,6 +85,11 @@ class PasskeyAuth
     // phishing resistance passkeys exist for.
     public function __construct(UserProviderInterface $userProvider, PasskeyProviderInterface $passkeyProvider, string $rpId, string $rpName, array $allowedOrigins, int $timeout = self::DEFAULT_TIMEOUT)
     {
+        // Fail with instructions rather than an "unknown class" fatal further
+        // down when the optional package is missing.
+        if (!self::isAvailable()) {
+            throw new Exception('Passkeys need the web-auth/webauthn-lib package; install it with: composer require web-auth/webauthn-lib:^5.3');
+        }
         $rpId = trim(strtolower($rpId));
         $origins = [];
         foreach ($allowedOrigins as $origin) {
@@ -114,6 +125,13 @@ class PasskeyAuth
         $this->ceremonyStepManagerFactory->setAlgorithmManager($algorithmManager);
         $this->ceremonyStepManagerFactory->setAttestationStatementSupportManager($attestationStatementSupportManager);
         $this->auditLog = new AuditLog();
+    }
+
+    // Whether webauthn-lib is installed. CredentialRecord arrived in 5.3, the
+    // oldest version this class supports.
+    public static function isAvailable(): bool
+    {
+        return class_exists(CredentialRecord::class);
     }
 
     // Records passkey registrations and deletions, in the same format SCIM uses

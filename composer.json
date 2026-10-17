@@ -13,13 +13,19 @@
     "require": {
         "php": ">=8.2",
         "voltcms/filedb": "^2",
-        "bramus/router": "^1",
-        "web-auth/webauthn-lib": "^5.3"
+        "bramus/router": "^1"
     },
     "require-dev": {
         "phpunit/phpunit": "^13",
         "phpstan/phpstan": "*",
-        "squizlabs/php_codesniffer": "*"
+        "squizlabs/php_codesniffer": "*",
+        "web-auth/webauthn-lib": "^5.3"
+    },
+    "suggest": {
+        "web-auth/webauthn-lib": "^5.3, for passkey (WebAuthn) sign-in through PasskeyAuth"
+    },
+    "conflict": {
+        "web-auth/webauthn-lib": "<5.3 || >=6.0"
     },
     "autoload": {
         "psr-4": {

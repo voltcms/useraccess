@@ -41,15 +41,19 @@ $sessionAuth = SessionAuth::getInstance($userProvider, $groupProvider);
 // http://localhost:8000; for anything else export USERACCESS_PASSKEY_RP_ID
 // (e.g. example.com) and USERACCESS_PASSKEY_ORIGINS (comma-separated, e.g.
 // https://example.com). Browsers only offer passkeys in a secure context:
-// https, or http on localhost.
-$passkeyAuth = new PasskeyAuth(
-    $userProvider,
-    $passkeyProvider,
-    getenv('USERACCESS_PASSKEY_RP_ID') ?: 'localhost',
-    'User Access Demo',
-    explode(',', getenv('USERACCESS_PASSKEY_ORIGINS') ?: 'http://localhost:8000')
-);
-$passkeyAuth->setAuditLog(new AuditLog('../data/audit'));
+// https, or http on localhost. Passkeys need the optional
+// web-auth/webauthn-lib package; without it the demo runs password-only.
+$passkeyAuth = null;
+if (PasskeyAuth::isAvailable()) {
+    $passkeyAuth = new PasskeyAuth(
+        $userProvider,
+        $passkeyProvider,
+        getenv('USERACCESS_PASSKEY_RP_ID') ?: 'localhost',
+        'User Access Demo',
+        explode(',', getenv('USERACCESS_PASSKEY_ORIGINS') ?: 'http://localhost:8000')
+    );
+    $passkeyAuth->setAuditLog(new AuditLog('../data/audit'));
+}
 
 // Resolve the request path relative to this front controller (mirrors how the
 // SCIM router strips the script's base path), so the demo's own auth routes can
@@ -130,6 +134,8 @@ if ($path === '/auth/session' && $method === 'GET') {
         'displayName' => $user ? $user->getDisplayName() : '',
         'isAdmin' => $user ? $user->isAdmin() : false,
         'csrfToken' => $sessionAuth->getCsrfToken(),
+        // Tells the UI whether to offer passkeys at all.
+        'passkeys' => $passkeyAuth !== null,
     ));
 }
 
@@ -151,6 +157,12 @@ if ($path === '/auth/login' && $method === 'POST') {
 if ($path === '/auth/logout' && $method === 'POST') {
     $sessionAuth->logout();
     sendJson(array('loggedIn' => false));
+}
+
+// Without webauthn-lib there are no passkey endpoints; say so instead of
+// letting the request fall through to the SCIM router.
+if ($passkeyAuth === null && str_starts_with($path, '/auth/passkey')) {
+    sendJson(['detail' => 'Passkeys are not available on this server.'], 404);
 }
 
 // POST /auth/passkey/login/options — start a passkey sign-in; the response is
